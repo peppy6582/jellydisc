@@ -37,9 +37,12 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
   `FileTransformationIntegration.cs` (an `IHostedService`) registers a web-renderer script
   injection with the separately-installed "File Transformation" plugin, if present; `Api/DiscMenusController`'s
   `web/Transform` and `web/discmenus.js` actions (both `[AllowAnonymous]` — no Jellyfin session
-  involved) are the callback and the injected script itself. See "Web menu renderer" below —
-  confirmed working end to end, but the script is still a placeholder; the real on-screen menu
-  UI isn't built yet.
+  involved) are the callback and the injected script itself. `Api/DiscMenusPlayerController`
+  (plain `[Authorize]` — any logged-in viewer, not admin-only) exposes
+  `GET DiscMenus/{id}/Menu`, the fully-resolved navigable menu tree the renderer will consume.
+  See "Web menu renderer" below — the injection pipeline and this endpoint are both confirmed
+  working end to end; the script itself is still a placeholder, the real on-screen menu UI isn't
+  built yet.
 - `Jellyfin.Plugin.DiscMenus.Tests/` – xUnit tests for `DurationMatcher` (the tolerance/
   ordinal/tiebreak edge cases). `docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests`
 - `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
@@ -222,9 +225,26 @@ was the last unverified piece of the whole injection pipeline — script serving
 delivery, and actual execution are all confirmed now.
 
 **Still to do**: `discmenus.js` is still just that placeholder — the actual on-screen menu UI
-(grid layout, background art, theming via Jellyfin 12 CSS variables, wiring to
-`GET DiscMenus/{id}` and `GET DiscMenus/{id}/SpecialFeatures`, and figuring out when in the
-player lifecycle it should appear) is the entire remaining scope of item 3.
+(grid layout, background art, theming via Jellyfin 12 CSS variables, and figuring out when in
+the player lifecycle it should appear) is the remaining scope of item 3.
+
+### The renderer's data source: `GET DiscMenus/{parentItemId}/Menu`
+The admin controller's endpoints are all `[Authorize(Policy = "RequiresElevation")]` (admin-only)
+and expose flat, per-key binding *status* — not what a renderer needs. `Api/DiscMenusPlayerController`
+is a separate controller (same `DiscMenus` route prefix — multiple controllers can share a prefix
+as long as the specific routes don't collide) gated with a plain `[Authorize]` — any authenticated
+viewer, not just admins, confirmed by ASP.NET Core's standard `[Authorize]` semantics (no policy
+means "must be authenticated," nothing more; a class-level `[Authorize(Policy=...)]` can't be
+*downgraded* by an action-level attribute, only added to, which is why this needed its own
+controller rather than an action on the admin one). `GET {parentItemId}/Menu` joins `menu.json` +
+`binding.json` server-side into one `RenderableMenuDocument` — the full navigable tree
+(`root`/`menus`/`entries`/`background`/`theme`) with every `playExtra`/`playSequence` already
+resolved to real local item IDs (unmatched ones dropped, not left as gaps) — so the renderer
+never needs to do that join itself. Confirmed against the live Thor: Ragnarok data: returns the
+correct nested `main`→`features` tree with all 5 extras' real item IDs, and correctly 401s
+unauthenticated. Tested with the admin API key (which naturally satisfies a lower bar than
+`RequiresElevation`) — a genuinely non-admin user session hasn't been separately tested, though
+nothing in a bare `[Authorize]` should distinguish them.
 
 ## Still to verify on 12.x
 - Local extras discovery rules (folder names / suffixes) — how an admin would organize
