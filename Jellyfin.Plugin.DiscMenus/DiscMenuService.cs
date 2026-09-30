@@ -2,6 +2,7 @@ using System.Text.Json;
 using Jellyfin.Plugin.DiscMenus.Model;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using Jellyfin.Database.Implementations.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -101,9 +102,8 @@ public sealed class DiscMenuService
             return null;
         }
 
-        var candidates = parentItem.GetExtras(user)
-            .Where(e => e.ExtraType is not null && e.RunTimeTicks is not null)
-            .Select(e => new LocalExtraCandidate(e.Id, e.ExtraType!.Value, TimeSpan.FromTicks(e.RunTimeTicks!.Value).TotalSeconds))
+        var candidates = WithDuration(parentItem.GetExtras(user))
+            .Select(x => new LocalExtraCandidate(x.Item.Id, x.Type, x.DurationSec))
             .ToList();
 
         var pending = menu.Extras
@@ -165,6 +165,64 @@ public sealed class DiscMenuService
 
         return items;
     }
+
+    /// <summary>
+    /// Every local extra under a parent item that has a type and a runtime,
+    /// regardless of whether it's already claimed by a binding - the pool an
+    /// admin picks from when manually linking an unmatched key.
+    /// </summary>
+    public IReadOnlyList<(BaseItem Item, ExtraType Type, double DurationSec)> GetLocalExtrasWithDuration(Guid parentItemId, User user)
+    {
+        if (_libraryManager.GetItemById(parentItemId) is not { } parentItem)
+        {
+            return Array.Empty<(BaseItem, ExtraType, double)>();
+        }
+
+        return WithDuration(parentItem.GetExtras(user)).ToList();
+    }
+
+    /// <summary>Manually links an extra key to a specific local item, overriding any prior auto-match.</summary>
+    public bool SetManualBinding(Guid parentItemId, string extraKey, Guid itemId) => TryUpdateBinding(
+        parentItemId,
+        extraKey,
+        new ExtraBinding
+        {
+            Status = BindingStatus.Matched,
+            ItemId = itemId,
+            Method = BindingMethod.Manual,
+            Confidence = 1.0,
+        });
+
+    /// <summary>Marks an extra key as intentionally unresolved; RunAutoMatch will never touch it again.</summary>
+    public bool IgnoreBinding(Guid parentItemId, string extraKey) =>
+        TryUpdateBinding(parentItemId, extraKey, new ExtraBinding { Status = BindingStatus.Ignored });
+
+    /// <summary>Clears a manual link or an ignore flag back to Unmatched, so RunAutoMatch will consider it again.</summary>
+    public bool ResetBinding(Guid parentItemId, string extraKey) =>
+        TryUpdateBinding(parentItemId, extraKey, new ExtraBinding { Status = BindingStatus.Unmatched });
+
+    private bool TryUpdateBinding(Guid parentItemId, string extraKey, ExtraBinding newBinding)
+    {
+        if (!ScanBindings().TryGetValue(parentItemId, out var pair))
+        {
+            return false;
+        }
+
+        var (menu, binding, bindingPath) = pair;
+        if (!menu.Extras.ContainsKey(extraKey))
+        {
+            return false;
+        }
+
+        binding.Bindings[extraKey] = newBinding;
+        binding.ResolvedAt = DateTimeOffset.UtcNow;
+        MenuFileLoader.SaveBinding(bindingPath, binding);
+        return true;
+    }
+
+    private static IEnumerable<(BaseItem Item, ExtraType Type, double DurationSec)> WithDuration(IEnumerable<BaseItem> items) =>
+        items.Where(e => e.ExtraType is not null && e.RunTimeTicks is not null)
+            .Select(e => (e, e.ExtraType!.Value, TimeSpan.FromTicks(e.RunTimeTicks!.Value).TotalSeconds));
 
     private static IEnumerable<string> ExtraKeysOf(MenuEntry entry) => entry switch
     {

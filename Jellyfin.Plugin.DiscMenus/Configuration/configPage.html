@@ -25,7 +25,8 @@
                 <p class="fieldDescription">
                     Every "*.binding.json" found under the menus directory, with its paired menu.
                     "Auto-Match" runs the duration matcher and writes results back to the binding
-                    file; it never touches bindings already set to Manual or Ignored.
+                    file; it never touches bindings already set to Manual or Ignored. "Details"
+                    lists every extra key so you can link, ignore, or reset one by hand.
                 </p>
                 <table class="detailTable">
                     <thead>
@@ -82,7 +83,9 @@
                     '<td class="detailTableBodyCell">' + escapeHtml(item.Ignored) + '</td>' +
                     '<td class="detailTableBodyCell">' +
                     '<button is="emby-button" type="button" class="raised" data-parentid="' + escapeHtml(item.ParentItemId) + '">' +
-                    '<span>Auto-Match</span></button></td>';
+                    '<span>Auto-Match</span></button> ' +
+                    '<button is="emby-button" type="button" class="raised" data-details="' + escapeHtml(item.ParentItemId) + '">' +
+                    '<span>Details</span></button></td>';
                 return tr;
             }
 
@@ -110,15 +113,132 @@
                 });
             }
 
+            function toggleDetail(page, button, parentItemId) {
+                var row = button.closest('tr');
+                var next = row.nextElementSibling;
+                if (next && next.classList.contains('discMenuDetailRow')) {
+                    next.parentNode.removeChild(next);
+                    return;
+                }
+
+                var detailRow = document.createElement('tr');
+                detailRow.className = 'discMenuDetailRow';
+                var td = document.createElement('td');
+                td.colSpan = 6;
+                td.textContent = 'Loading…';
+                detailRow.appendChild(td);
+                row.parentNode.insertBefore(detailRow, row.nextSibling);
+                loadDetail(page, parentItemId, td);
+            }
+
+            function loadDetail(page, parentItemId, container) {
+                Promise.all([
+                    ApiClient.getJSON(ApiClient.getUrl('DiscMenus/' + parentItemId)),
+                    ApiClient.getJSON(ApiClient.getUrl('DiscMenus/' + parentItemId + '/Candidates', { userId: ApiClient.getCurrentUserId() }))
+                ]).then(function (results) {
+                    renderDetail(page, parentItemId, container, results[0], results[1]);
+                }, function () {
+                    container.textContent = 'Failed to load details.';
+                });
+            }
+
+            function renderDetail(page, parentItemId, container, detail, candidates) {
+                var rows = detail.Extras.map(function (extra) {
+                    var options = candidates.map(function (c) {
+                        var selected = c.ItemId === extra.ItemId ? ' selected' : '';
+                        return '<option value="' + escapeHtml(c.ItemId) + '"' + selected + '>' +
+                            escapeHtml(c.Name) + ' (' + escapeHtml(c.Type) + ', ' + Math.round(c.DurationSec) + 's)</option>';
+                    }).join('');
+
+                    var statusText = escapeHtml(extra.Status) + (extra.Method ? ' (' + escapeHtml(extra.Method) + ')' : '');
+
+                    return '<tr>' +
+                        '<td class="detailTableBodyCell">' + escapeHtml(extra.Key) + '</td>' +
+                        '<td class="detailTableBodyCell">' + escapeHtml(extra.Type) + '</td>' +
+                        '<td class="detailTableBodyCell">' + Math.round(extra.DurationSec) + 's</td>' +
+                        '<td class="detailTableBodyCell">' + statusText + '</td>' +
+                        '<td class="detailTableBodyCell">' +
+                        '<select is="emby-select" class="discMenuLinkSelect" data-key="' + escapeHtml(extra.Key) + '">' +
+                        '<option value="">-- choose --</option>' + options + '</select>' +
+                        '</td>' +
+                        '<td class="detailTableBodyCell">' +
+                        '<button is="emby-button" type="button" class="raised discMenuLinkButton" data-key="' + escapeHtml(extra.Key) + '"><span>Link</span></button> ' +
+                        '<button is="emby-button" type="button" class="raised discMenuIgnoreButton" data-key="' + escapeHtml(extra.Key) + '"><span>Ignore</span></button> ' +
+                        '<button is="emby-button" type="button" class="raised discMenuResetButton" data-key="' + escapeHtml(extra.Key) + '"><span>Reset</span></button>' +
+                        '</td></tr>';
+                }).join('');
+
+                container.innerHTML =
+                    '<table class="detailTable"><thead><tr>' +
+                    '<th class="detailTableHeaderCell">Key</th>' +
+                    '<th class="detailTableHeaderCell">Type</th>' +
+                    '<th class="detailTableHeaderCell">Duration</th>' +
+                    '<th class="detailTableHeaderCell">Status</th>' +
+                    '<th class="detailTableHeaderCell">Link to</th>' +
+                    '<th class="detailTableHeaderCell"></th>' +
+                    '</tr></thead><tbody>' + rows + '</tbody></table>';
+
+                function refresh() {
+                    loadDetail(page, parentItemId, container);
+                    loadMenus(page);
+                }
+
+                container.querySelectorAll('.discMenuLinkButton').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var key = btn.getAttribute('data-key');
+                        var select = container.querySelector('select[data-key="' + key + '"]');
+                        if (!select.value) {
+                            Dashboard.alert('Choose an item to link first.');
+                            return;
+                        }
+
+                        postBindingAction(parentItemId, key, 'Link', { itemId: select.value }, refresh);
+                    });
+                });
+
+                container.querySelectorAll('.discMenuIgnoreButton').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        postBindingAction(parentItemId, btn.getAttribute('data-key'), 'Ignore', {}, refresh);
+                    });
+                });
+
+                container.querySelectorAll('.discMenuResetButton').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        postBindingAction(parentItemId, btn.getAttribute('data-key'), 'Reset', {}, refresh);
+                    });
+                });
+            }
+
+            function postBindingAction(parentItemId, extraKey, action, query, onDone) {
+                Dashboard.showLoadingMsg();
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('DiscMenus/' + parentItemId + '/Bindings/' + encodeURIComponent(extraKey) + '/' + action, query)
+                }).then(function () {
+                    Dashboard.hideLoadingMsg();
+                    onDone();
+                }, function () {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert(action + ' failed. See the server log.');
+                });
+            }
+
             document.querySelector('#DiscMenusConfigPage').addEventListener('pageshow', function () {
                 loadConfig(this);
                 loadMenus(this);
             });
 
             document.querySelector('#MenusTableBody').addEventListener('click', function (e) {
-                var button = e.target.closest('button[data-parentid]');
-                if (button) {
-                    runAutoMatch(document.querySelector('#DiscMenusConfigPage'), button.getAttribute('data-parentid'));
+                var page = document.querySelector('#DiscMenusConfigPage');
+                var autoMatchButton = e.target.closest('button[data-parentid]');
+                if (autoMatchButton) {
+                    runAutoMatch(page, autoMatchButton.getAttribute('data-parentid'));
+                    return;
+                }
+
+                var detailsButton = e.target.closest('button[data-details]');
+                if (detailsButton) {
+                    toggleDetail(page, detailsButton, detailsButton.getAttribute('data-details'));
                 }
             });
 
