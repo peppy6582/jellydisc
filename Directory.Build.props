@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    Keeps bin/ and obj/ off the UnRaid boot flash. $(JDM_ARTIFACTS) is set to
+    /artifacts by docker-compose.yml (a named volume); when it is empty -- i.e.
+    building outside the dev container -- these conditions do not apply and
+    MSBuild uses its normal ./bin and ./obj.
+  -->
+  <PropertyGroup Condition="'$(JDM_ARTIFACTS)' != ''">
+    <BaseOutputPath>$(JDM_ARTIFACTS)/$(MSBuildProjectName)/bin/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(JDM_ARTIFACTS)/$(MSBuildProjectName)/obj/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

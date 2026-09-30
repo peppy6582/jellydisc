@@ -25,6 +25,35 @@ with `ordinal` as a tiebreaker, then manual linking. Never by filename.
 - SpecialFeatures endpoint path
 - Local extras discovery rules (folder names / suffixes)
 
+## Development
+
+Lives at `/boot/config/plugins/compose.manager/projects/jellyfin-disc-menus`
+(the compose.manager project tree, alongside every other project on this box).
+That path is the **boot flash** — source is fine there and restic backs this
+tree up, but build output must not be. `Directory.Build.props` redirects `bin/`
+and `obj/` into the `jdm_artifacts` Docker volume whenever `$JDM_ARTIFACTS` is
+set, which `docker-compose.yml` does. Build outside the container and it falls
+back to the usual `./bin` and `./obj`.
+
+Nothing here autostarts (`autostart` is `false`). The `dev` service exists only
+so VS Code has somewhere to attach.
+
+```bash
+docker compose up -d dev                 # .NET 10 SDK, idles on sleep infinity
+docker compose exec dev dotnet --version # 10.0.401
+docker compose run --rm validate         # JSON Schema + cross-reference checks
+docker compose down                      # stops dev; volumes persist
+```
+
+**VS Code:** open the folder and *Reopen in Container* (`.devcontainer/`
+attaches to the `dev` service), or just open it and use the tasks — `validate
+schemas` is the default test task, `dotnet build` the default build task.
+`.vscode/settings.json` binds `*.menu.json` and `*.binding.json` to their
+schemas so you get validation while typing, not only when the validator runs.
+
+Volumes: `jdm_nuget` (package cache), `jdm_artifacts` (bin/obj), `jdm_pip`.
+All on the cache pool, none on the flash.
+
 ## Planned build order
 1. Plugin: local JSON load/validate, expose entries as Special Features
 2. Duration auto-match + manual linking UI

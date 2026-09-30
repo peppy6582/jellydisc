@@ -1,0 +1,51 @@
+# Dev environment for jellyfin-disc-menus (a Jellyfin 12.x plugin).
+#
+# WHY NOTHING RUNS AS A SERVICE: this project produces a plugin DLL, it does not
+# host anything. `autostart` is false and `dev` idles on `sleep infinity` purely
+# so VS Code has a container to attach to. Bringing the stack "up" starts a
+# shell, not a server.
+#
+# WHERE THE SOURCE LIVES -- read before changing any volume path:
+# /workspace/compose-projects maps to /boot/config/plugins/compose.manager/projects
+# on the host, which is the BOOT FLASH (a USB stick). Source is fine there: it is
+# small, and restic backs this tree up (appdata is NOT backed up, this is).
+# Build output is NOT fine there -- a NuGet restore plus obj/bin would write
+# hundreds of MB to flash on every build. Directory.Build.props redirects all of
+# it into the jdm_artifacts volume via $JDM_ARTIFACTS, set below.
+
+services:
+  dev:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    container_name: jellyfin-disc-menus-dev
+    restart: unless-stopped
+    working_dir: /workspace
+    command: sleep infinity
+    environment:
+      - TZ=America/Chicago
+      - DOTNET_CLI_TELEMETRY_OPTOUT=1
+      - DOTNET_NOLOGO=1
+      # Consumed by Directory.Build.props. Unset outside the container, so a
+      # build on the host falls back to the normal ./bin and ./obj.
+      - JDM_ARTIFACTS=/artifacts
+      - NUGET_PACKAGES=/nuget
+    volumes:
+      - /boot/config/plugins/compose.manager/projects/jellyfin-disc-menus:/workspace
+      - jdm_nuget:/nuget
+      - jdm_artifacts:/artifacts
+
+  # One-shot JSON schema validation. Behind a profile so `up -d` ignores it.
+  #   docker compose run --rm validate
+  validate:
+    image: python:3.13-slim
+    container_name: jellyfin-disc-menus-validate
+    profiles: ["tools"]
+    working_dir: /workspace
+    command: sh -c "pip install --quiet jsonschema && python3 tools/validate.py"
+    volumes:
+      - /boot/config/plugins/compose.manager/projects/jellyfin-disc-menus:/workspace
+      - jdm_pip:/root/.cache/pip
+
+volumes:
+  jdm_nuget:
+  jdm_artifacts:
+  jdm_pip:
