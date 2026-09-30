@@ -157,6 +157,39 @@ public sealed class DiscMenusController : ControllerBase
         _discMenuService.ResetBinding(parentItemId, extraKey)
             ? NoContent()
             : NotFound($"No extra '{extraKey}' on the menu bound to '{parentItemId}'.");
+
+    /// <summary>
+    /// Called by the "File Transformation" plugin (server-to-server, no Jellyfin
+    /// session) to inject the web menu renderer's script tag into jellyfin-web's
+    /// index.html. See FileTransformationIntegration.cs for the registration side.
+    /// Body is a plain JSON object with a single "contents" field (the full file
+    /// text); response body is the transformed text, read back as a raw string -
+    /// see File Transformation's TransformationHelper.ApplyTransformation.
+    /// </summary>
+    [HttpPost("web/Transform")]
+    [AllowAnonymous]
+    public async Task<ContentResult> TransformIndexHtml()
+    {
+        using var reader = new StreamReader(Request.Body);
+        var raw = await reader.ReadToEndAsync();
+        using var doc = System.Text.Json.JsonDocument.Parse(raw);
+        var contents = doc.RootElement.TryGetProperty("contents", out var contentsProp) ? contentsProp.GetString() ?? string.Empty : string.Empty;
+
+        const string BodyCloseTag = "</body>";
+        var insertAt = contents.LastIndexOf(BodyCloseTag, StringComparison.OrdinalIgnoreCase);
+        var result = insertAt < 0
+            ? contents
+            : contents[..insertAt] + "<script src=\"/DiscMenus/web/discmenus.js\"></script>\n" + contents[insertAt..];
+
+        return Content(result, "text/html");
+    }
+
+    /// <summary>The web menu renderer script injected into jellyfin-web by <see cref="TransformIndexHtml"/>.</summary>
+    [HttpGet("web/discmenus.js")]
+    [AllowAnonymous]
+    public ContentResult GetRendererScript() => Content(
+        "console.log('[Disc Menus] renderer script loaded - placeholder, real UI not built yet');",
+        "application/javascript");
 }
 
 public sealed class MenuBindingSummary

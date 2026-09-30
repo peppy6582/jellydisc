@@ -9,5 +9,6 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<DiscMenuService>();
+        serviceCollection.AddHostedService<FileTransformationIntegration>();
     }
 }

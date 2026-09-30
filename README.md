@@ -34,6 +34,12 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
   logged-in browser session against real library data — sidebar entry, detail page, and every
   JS-driven feature on the config page itself (see "End-to-end test against real data" and the
   two "Fixed:" sections below for what broke along the way and why).
+  `FileTransformationIntegration.cs` (an `IHostedService`) registers a web-renderer script
+  injection with the separately-installed "File Transformation" plugin, if present; `Api/DiscMenusController`'s
+  `web/Transform` and `web/discmenus.js` actions (both `[AllowAnonymous]` — no Jellyfin session
+  involved) are the callback and the injected script itself. See "Web menu renderer" below —
+  confirmed working end to end, but the script is still a placeholder; the real on-screen menu
+  UI isn't built yet.
 - `Jellyfin.Plugin.DiscMenus.Tests/` – xUnit tests for `DurationMatcher` (the tolerance/
   ordinal/tiebreak edge cases). `docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests`
 - `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
@@ -169,13 +175,59 @@ structural bug does.) **Fix**: moved the `<script>` block to be the last child i
 end to end in a real logged-in browser session — this was the last unverified piece of the
 whole plugin.
 
+## Web menu renderer via File Transformation (2026-09-30)
+Item 3 of the planned build order needs a way to show an actual on-screen "disc menu" in the
+player, not just the admin dashboard — a completely different problem from the config page.
+Jellyfin core has no supported way for a plugin to inject content into jellyfin-web (confirmed:
+a Jellyfin forum moderator explicitly states this isn't supported, since it'd give one client
+special treatment). The community answer is a separate, admin-installed plugin, **File
+Transformation** (https://github.com/IAmParadox27/jellyfin-plugin-file-transformation, by
+IAmParadox27) — it lets other plugins rewrite jellyfin-web's served files (here, `index.html`)
+via a middleware hook. Verified by cloning and reading its actual source directly, not secondary
+docs, since a first research pass could only get this secondhand:
+
+- **Installed on this server**: repository `https://www.iamparadox.dev/jellyfin/plugins/manifest.json`
+  added, plugin installed via `POST /Repositories` + `POST /Packages/Installed/{name}` (both real,
+  confirmed-via-OpenAPI-spec endpoints), version 3.0.1.0, `targetAbi: "12.1.0.0"` — a build whose
+  changelog literally says "Add support for 12.1," matching this server exactly.
+- **Real API** (`PluginInterface.cs`): `RegisterTransformation(JObject payload)` /
+  `RemoveTransformation(Guid)`, both static. Dependents can't reference File Transformation's
+  types directly — Jellyfin loads every plugin in its own `AssemblyLoadContext` — so this has to
+  go through reflection. The payload (`TransformationRegistrationPayload.cs`) supports three
+  callback mechanisms (assembly reflection, a named pipe, or an HTTP endpoint); we use the HTTP
+  one (`transformationEndpoint`) since it needs no shared types at all — File Transformation POSTs
+  `{"contents": "<full file text>"}` to our own endpoint and reads the response body back as the
+  transformed text (confirmed by reading `TransformationHelper.ApplyTransformation` directly).
+- **A real bug hit and fixed along the way**: `RegisterTransformation` takes a
+  `Newtonsoft.Json.Linq.JObject`. Building that payload from our *own* `Newtonsoft.Json`
+  reference failed at runtime — `Object of type 'JObject' cannot be converted to type 'JObject'`
+  — because each plugin's isolated `AssemblyLoadContext` gives even identically-versioned copies
+  of the same type distinct runtime identities. Neither we nor File Transformation itself ship a
+  private copy of `Newtonsoft.Json` (confirmed: absent from both plugins' actual installed
+  folders) — Jellyfin's own server process already references it, so there's one shared instance
+  for the whole process. Fix: don't reference `Newtonsoft.Json` from our own csproj at all;
+  find the shared assembly via `AssemblyLoadContext.All` and build the payload with *its*
+  `JObject.Parse`, obtained via reflection, so the type genuinely matches. See
+  `FileTransformationIntegration.cs`.
+- **Confirmed end to end**: `GET /web/index.html` now really contains
+  `<script src="/DiscMenus/web/discmenus.js"></script>` injected right before `</body>`, and that
+  script serves correctly. Since `index.html` is the browser's own top-level page load (not a
+  dynamically-inserted SPA fragment like the config page was), normal HTML parsing applies and
+  the injected script executes exactly like any other `<script>` tag — none of the config page's
+  `viewContainer.js` insertion quirks apply here.
+
+**Still to do**: `discmenus.js` is a placeholder (`console.log(...)` only) — the actual on-screen
+menu UI (grid layout, background art, theming via Jellyfin 12 CSS variables, wiring to
+`GET DiscMenus/{id}` and `GET DiscMenus/{id}/SpecialFeatures`) doesn't exist yet. Its execution
+in a real browser also hasn't been visually confirmed (only that the server serves the right
+bytes) — should show up as a console log line on any page load once confirmed.
+
 ## Still to verify on 12.x
 - Local extras discovery rules (folder names / suffixes) — how an admin would organize
   `*.menu.json`/`*.binding.json` per library item in the general case; sidestepped for the Thor
   test via an explicit `MenusPath`.
-- `MenuSection = "server"` / `MenuIcon = "extension"` actually placing the page in the dashboard
-  sidebar as expected — the server-side wiring compiles and loads without error, but placement
-  and rendering can only be confirmed by looking at the actual dashboard.
+- `discmenus.js` actually executing in a real browser (server-side injection is confirmed; the
+  browser-side console log hasn't been visually checked yet).
 
 ## Development
 
@@ -248,5 +300,10 @@ requests have no associated user, so any endpoint needing one (ours accept an ex
    an admin can Link, Ignore, or Reset any key by hand — confirmed working end to end in a real
    logged-in dashboard session, after fixing the plugin-Id and config-page-script bugs described
    below.
-3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables
+3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables —
+   **pipeline proven, real UI not started**. File Transformation is installed and our script
+   injection into `index.html` is confirmed working end to end at the HTTP level (see "Web menu
+   renderer via File Transformation" above). `discmenus.js` is still just a placeholder — the
+   actual themed on-screen menu (grid layout, background art, wiring to the existing
+   `GET DiscMenus/{id}`/`SpecialFeatures` API) is the remaining work.
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
