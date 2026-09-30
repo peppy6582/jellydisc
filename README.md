@@ -12,8 +12,13 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
 - `tools/validate.py` – JSON Schema validation plus cross-reference checks the schema
   can't express (dangling extra/menu keys, menus unreachable from `root`), with
   negative test cases. `pip install jsonschema && python3 tools/validate.py`
-- `Jellyfin.Plugin.DiscMenus/` – the plugin itself. `Model/` mirrors the two schemas
-  as C# POCOs (reusing Jellyfin's own `ExtraType`/`ImageType` enums); `MenuFileLoader`
+- `Jellyfin.Plugin.DiscMenus/` – the plugin itself. `Plugin.cs` overrides `Id`/`Description`
+  with fixed values matching `build.yaml`'s guid — **required**, not cosmetic: Jellyfin's
+  `PluginManager.CreatePluginInstance` treats the *loaded assembly's* `IPlugin.Id`/`Description`
+  as authoritative over `meta.json` and rewrites the manifest to match on every startup: without
+  this override, `Id` defaults to `Guid.Empty` and permanently zeroes `meta.json`'s guid (see
+  "Fixed: plugin Id resetting to Guid.Empty" below — this bit us for real). `Model/` mirrors the
+  two schemas as C# POCOs (reusing Jellyfin's own `ExtraType`/`ImageType` enums); `MenuFileLoader`
   loads/saves + runs the same semantic checks as `validate.py`; `DiscMenuService` resolves
   a parent item's bound menu to local `BaseItem`s (its Special Features), runs
   `DurationMatcher` to auto-fill bindings, and exposes `SetManualBinding`/`IgnoreBinding`/
@@ -22,7 +27,8 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
   `GET DiscMenus/{id}/Candidates`, `POST DiscMenus/{id}/AutoMatch`,
   `POST DiscMenus/{id}/Bindings/{key}/{Link|Ignore|Reset}`), admin-gated via
   `[Authorize(Policy = "RequiresElevation")]`. `Configuration/configPage.html` is a minimal
-  admin page (registered via `IHasWebPages`) listing bound menus with match counts, an
+  admin page (registered via `IHasWebPages`, `EnableInMainMenu = true` under the `server` menu
+  section so it shows in the dashboard sidebar) listing bound menus with match counts, an
   Auto-Match button per row, and a "Details" panel per menu for manually linking, ignoring,
   or resetting individual extra keys. Deployed and end-to-end tested against real library data
   on a real 12.1.0 server (see "End-to-end test against real data" below); only the page's
@@ -109,6 +115,39 @@ dashboard session in a real browser. The PascalCase-JSON assumption the JS depen
 confirmed** (every response above came back PascalCase, e.g. `"ParentItemId"`, `"MenuTitle"`),
 which was the main risk in that area.
 
+## Fixed: plugin Id resetting to Guid.Empty on every startup (2026-09-30)
+After the Thor test above, the dashboard showed almost nothing for this plugin (no working
+settings link, just bare manifest fields) and threw "An error occurred while getting the plugin
+details from the repository". `GET /Plugins` confirmed the actual cause: this plugin's `Id` was
+genuinely `Guid.Empty` at runtime, and `meta.json`'s `guid`/`description` fields were being
+silently reset to `""`/all-zeros within ~6 seconds of every single restart — before any
+scheduled task runs, confirmed by second-by-second polling.
+
+Root cause (confirmed by reading the actual `jellyfin/jellyfin` v12.1 source, not guessed):
+`PluginManager.CreatePluginInstance` (`Emby.Server.Implementations/Plugins/PluginManager.cs`,
+~line 629) compares the loaded assembly's `instance.Id`/`instance.Description` against the
+manifest read from `meta.json`, and **unconditionally overwrites the manifest with the
+assembly's values** whenever they differ — treating the compiled plugin as authoritative over
+the manifest file, by design (the comment in that code explains it's meant to self-heal a
+manifest for a plugin that failed to load). `BasePlugin.Id` (`MediaBrowser.Common/Plugins/BasePlugin.cs`)
+is a `private set` property that only gets populated from an assembly-level `[Guid(...)]`
+attribute if one exists (`BasePluginOfT.cs` constructor) — we had none, so `Id` defaulted to
+`Guid.Empty`, which then got written back into `meta.json` on every load, permanently
+clobbering whatever guid we'd hand-written there.
+
+**Fix**: override `Id` (and `Description`) directly in `Plugin.cs` with fixed values matching
+`build.yaml`'s guid — confirmed to be exactly the pattern used by the official
+`jellyfin/jellyfin-plugin-template` repo's own `Plugin.cs`. Once deployed, `meta.json` self-healed
+immediately (guid and description both came back correct on the very next restart), `GET /Plugins`
+reports the right `Id`, and the dashboard's plugin-details flow should now work. **If you ever
+change the guid in `build.yaml`/`meta.json`, `Plugin.cs`'s `Id` override must be updated to
+match — they are two independent hardcoded copies of the same value with nothing enforcing they
+stay in sync.**
+
+Also added in this pass: `GetPages()` now sets `EnableInMainMenu = true`, `MenuSection =
+"server"`, `MenuIcon = "extension"` so the config page shows in the dashboard's left sidebar,
+per the well-established (if not directly re-verified for 12.x) Jellyfin plugin convention.
+
 ## Still to verify on 12.x
 - Local extras discovery rules (folder names / suffixes) — how an admin would organize
   `*.menu.json`/`*.binding.json` per library item in the general case; sidestepped for the Thor
@@ -116,6 +155,9 @@ which was the main risk in that area.
 - The config page's browser-side JS specifically (dashboard globals, click handlers) — the data
   it depends on (JSON casing, all API responses) is now confirmed; only the DOM/JS execution
   itself hasn't run in a real browser.
+- `MenuSection = "server"` / `MenuIcon = "extension"` actually placing the page in the dashboard
+  sidebar as expected — the server-side wiring compiles and loads without error, but placement
+  and rendering can only be confirmed by looking at the actual dashboard.
 
 ## Development
 

@@ -18,12 +18,29 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
     public override string Name => "Disc Menus";
 
+    /// <summary>
+    /// Must match build.yaml's guid. PluginManager.CreatePluginInstance
+    /// overwrites meta.json's guid/description with this instance's Id/
+    /// Description on every startup (treats the loaded assembly as the
+    /// source of truth over the manifest file) - without this override,
+    /// Id defaults to Guid.Empty and the manifest gets permanently zeroed.
+    /// </summary>
+    public override Guid Id => Guid.Parse("913b9d44-cafe-4fe7-ae0b-f1362dc12cc7");
+
+    public override string Description =>
+        "Loads user-authored disc menu definitions, resolves them against a local binding file, "
+        + "and exposes the matched entries as the parent item's Special Features.";
+
     public IEnumerable<PluginPageInfo> GetPages() =>
     [
         new PluginPageInfo
         {
             Name = "DiscMenus",
             EmbeddedResourcePath = $"{GetType().Namespace}.Configuration.configPage.html",
+            DisplayName = "Disc Menus",
+            EnableInMainMenu = true,
+            MenuSection = "server",
+            MenuIcon = "extension",
         }
     ];
 }
