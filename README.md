@@ -216,18 +216,20 @@ docs, since a first research pass could only get this secondhand:
   the injected script executes exactly like any other `<script>` tag — none of the config page's
   `viewContainer.js` insertion quirks apply here.
 
-**Still to do**: `discmenus.js` is a placeholder (`console.log(...)` only) — the actual on-screen
-menu UI (grid layout, background art, theming via Jellyfin 12 CSS variables, wiring to
-`GET DiscMenus/{id}` and `GET DiscMenus/{id}/SpecialFeatures`) doesn't exist yet. Its execution
-in a real browser also hasn't been visually confirmed (only that the server serves the right
-bytes) — should show up as a console log line on any page load once confirmed.
+Confirmed fully end to end, including in a real browser: reloading any page logs
+`[Disc Menus] renderer script loaded - placeholder, real UI not built yet` to the console. That
+was the last unverified piece of the whole injection pipeline — script serving, jellyfin-web
+delivery, and actual execution are all confirmed now.
+
+**Still to do**: `discmenus.js` is still just that placeholder — the actual on-screen menu UI
+(grid layout, background art, theming via Jellyfin 12 CSS variables, wiring to
+`GET DiscMenus/{id}` and `GET DiscMenus/{id}/SpecialFeatures`, and figuring out when in the
+player lifecycle it should appear) is the entire remaining scope of item 3.
 
 ## Still to verify on 12.x
 - Local extras discovery rules (folder names / suffixes) — how an admin would organize
   `*.menu.json`/`*.binding.json` per library item in the general case; sidestepped for the Thor
   test via an explicit `MenusPath`.
-- `discmenus.js` actually executing in a real browser (server-side injection is confirmed; the
-  browser-side console log hasn't been visually checked yet).
 
 ## Development
 
@@ -301,9 +303,11 @@ requests have no associated user, so any endpoint needing one (ours accept an ex
    logged-in dashboard session, after fixing the plugin-Id and config-page-script bugs described
    below.
 3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables —
-   **pipeline proven, real UI not started**. File Transformation is installed and our script
-   injection into `index.html` is confirmed working end to end at the HTTP level (see "Web menu
-   renderer via File Transformation" above). `discmenus.js` is still just a placeholder — the
+   **injection pipeline fully confirmed, real UI not started**. File Transformation is installed,
+   and script injection into `index.html` is confirmed working end to end, including actual
+   execution in a real browser (`[Disc Menus] renderer script loaded` in the console) — see "Web
+   menu renderer via File Transformation" above. `discmenus.js` is still just a placeholder — the
    actual themed on-screen menu (grid layout, background art, wiring to the existing
-   `GET DiscMenus/{id}`/`SpecialFeatures` API) is the remaining work.
+   `GET DiscMenus/{id}`/`SpecialFeatures` API, and when in the player lifecycle it should appear)
+   is the entire remaining scope of this item.
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
