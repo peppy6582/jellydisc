@@ -187,9 +187,15 @@ public sealed class DiscMenusController : ControllerBase
     /// <summary>The web menu renderer script injected into jellyfin-web by <see cref="TransformIndexHtml"/>.</summary>
     [HttpGet("web/discmenus.js")]
     [AllowAnonymous]
-    public ContentResult GetRendererScript() => Content(
-        "console.log('[Disc Menus] renderer script loaded - placeholder, real UI not built yet');",
-        "application/javascript");
+    public ContentResult GetRendererScript()
+    {
+        var assembly = GetType().Assembly;
+        var resourceName = $"{assembly.GetName().Name}.Web.discmenus.js";
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' not found.");
+        using var reader = new StreamReader(stream);
+        return Content(reader.ReadToEnd(), "application/javascript");
+    }
 }
 
 public sealed class MenuBindingSummary

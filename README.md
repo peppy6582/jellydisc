@@ -37,12 +37,14 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
   `FileTransformationIntegration.cs` (an `IHostedService`) registers a web-renderer script
   injection with the separately-installed "File Transformation" plugin, if present; `Api/DiscMenusController`'s
   `web/Transform` and `web/discmenus.js` actions (both `[AllowAnonymous]` — no Jellyfin session
-  involved) are the callback and the injected script itself. `Api/DiscMenusPlayerController`
-  (plain `[Authorize]` — any logged-in viewer, not admin-only) exposes
-  `GET DiscMenus/{id}/Menu`, the fully-resolved navigable menu tree the renderer will consume.
-  See "Web menu renderer" below — the injection pipeline and this endpoint are both confirmed
-  working end to end; the script itself is still a placeholder, the real on-screen menu UI isn't
-  built yet.
+  involved) is the callback; `Web/discmenus.js` (embedded resource, served by
+  `GetRendererScript()`) is the real renderer — a floating button + full-screen overlay menu,
+  themed from the menu's own `theme.json`. `Api/DiscMenusPlayerController` (plain `[Authorize]` —
+  any logged-in viewer, not admin-only) exposes `GET DiscMenus/{id}/Menu`, the fully-resolved
+  navigable menu tree the renderer consumes. See "Web menu renderer" below — the injection
+  pipeline and this endpoint are both confirmed end to end against real data; the renderer's
+  actual in-browser behavior (as opposed to the server-side pieces it depends on) isn't yet, and
+  it has real, documented v1 limitations (no one-click playback chief among them).
 - `Jellyfin.Plugin.DiscMenus.Tests/` – xUnit tests for `DurationMatcher` (the tolerance/
   ordinal/tiebreak edge cases). `docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests`
 - `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
@@ -219,14 +221,9 @@ docs, since a first research pass could only get this secondhand:
   the injected script executes exactly like any other `<script>` tag — none of the config page's
   `viewContainer.js` insertion quirks apply here.
 
-Confirmed fully end to end, including in a real browser: reloading any page logs
-`[Disc Menus] renderer script loaded - placeholder, real UI not built yet` to the console. That
-was the last unverified piece of the whole injection pipeline — script serving, jellyfin-web
-delivery, and actual execution are all confirmed now.
-
-**Still to do**: `discmenus.js` is still just that placeholder — the actual on-screen menu UI
-(grid layout, background art, theming via Jellyfin 12 CSS variables, and figuring out when in
-the player lifecycle it should appear) is the remaining scope of item 3.
+Confirmed fully end to end, including in a real browser: reloading any page logs the script's
+own load message to the console. That was the last unverified piece of the injection pipeline
+itself — script serving, jellyfin-web delivery, and actual execution.
 
 ### The renderer's data source: `GET DiscMenus/{parentItemId}/Menu`
 The admin controller's endpoints are all `[Authorize(Policy = "RequiresElevation")]` (admin-only)
@@ -246,10 +243,67 @@ unauthenticated. Tested with the admin API key (which naturally satisfies a lowe
 `RequiresElevation`) — a genuinely non-admin user session hasn't been separately tested, though
 nothing in a bare `[Authorize]` should distinguish them.
 
+### The renderer itself: `Web/discmenus.js` (2026-09-30)
+A real, working overlay renderer, not just the placeholder — built after researching jellyfin-web's
+actual client-side mechanics directly (cloned the repo again, plus fetched the real `jellyfin-apiclient`
+npm package, v1.11.0, that `window.ApiClient` actually is), since guessing at browser-side APIs is
+exactly the kind of thing that's bitten this project before:
+
+- **Detecting the current item**: jellyfin-web is a hash-routed SPA (`components/router/appRouter.js`
+  builds URLs like `#/details?id=<guid>`) — confirmed by reading `getRouteUrl()` directly. Since our
+  script loads once with `index.html` and never reloads on in-app navigation, it watches the native
+  `hashchange` event and extracts `id=` from the hash on every change, calling
+  `GET DiscMenus/{id}/Menu` each time it changes. A 404 (no menu bound) means no button shows —
+  silent, no error state needed.
+- **Showing the menu**: a small floating "Disc Menu" button (bottom-right, doesn't need to know
+  anything about Jellyfin's own details-page DOM layout, which was never reverse-engineered) opens a
+  full-screen overlay rendering the current menu's entries, themed with the menu's own `accent`/`align`
+  from `theme.json`, backed by `ApiClient.getImageUrl(itemId, { type, index })` for `background.source:
+  "jellyfin"` (signature confirmed directly from the real `jellyfin-apiclient` package source — the
+  one new API call this needed that the config page hadn't already exercised) or a solid color for
+  `"color"`. Submenu/back navigation is a simple in-memory stack; arrow keys + Enter + Escape work via
+  a `keydown` listener, mouse click always works.
+- **Real, deliberate v1 limitations** (all called out in the script's own file header too):
+  - **No one-click playback.** `playbackManager` (the thing that actually starts video playback) is
+    an ES module internal to jellyfin-web's own bundle — confirmed by reading
+    `apps/legacy/controllers/itemDetails/index.js`, which imports it directly
+    (`import { playbackManager } from 'components/playback/playbackmanager'`) — not a global, and
+    there's no `window.playbackManager` anywhere in the source (grepped for it directly), no
+    AMD-style `require()` bridge for legacy scripts to pull internal modules by name either (that
+    mechanism is gone from the current, React/Vite-based client), and no `autoplay`-style query
+    param on the details route either. So `playFeature`/`playExtra` navigate to the target item's own
+    details page (`location.hash = '#/details?id=...'`) instead of starting playback directly — the
+    user clicks Jellyfin's own native Play button there. A real gap from the DVD-menu ideal, not a
+    corner deliberately cut for no reason: closing it would mean either patching one of jellyfin-web's
+    own bundle files via a second File Transformation rule to expose the module (fragile — breaks on
+    any jellyfin-web rebuild that changes minified internals) or simulating a click on Jellyfin's own
+    Play button (needs the real details-page DOM, unverified).
+  - `playSequence` plays only the first resolved item, not the whole queue as a playlist (queueing
+    multiple items also needs `playbackManager`).
+  - `chapters` (scene selection) shows a "not implemented" message — this plugin doesn't fetch
+    chapter data at all yet.
+  - `background.source: "tmdb"`/`"fanart"` fall back to a plain dark background — not implemented.
+  - **Jellyfin 12's actual theme CSS variables are much thinner than the original plan assumed**:
+    checked `src/themes/_base/_theme.scss` directly — only four runtime custom properties exist
+    (`--jf-palette-background-defaultImage`, `--jf-palette-AppBar-transparentBg`,
+    `--jf-palette-AppBar-gradient`, `--jf-card-borderRadius`); the actual color palette (primary,
+    background, text) is baked into MUI's JS theme object and compiled CSS at build time, not exposed
+    as readable runtime variables. So "themed with Jellyfin 12 CSS variables" isn't really achievable
+    as originally phrased — this version themes purely from the menu's own `theme.json`
+    (`accent`/`align`) plus fixed dark colors, not by reading Jellyfin's current skin.
+- **Not yet verified**: none of the above has been clicked through in a real browser session yet —
+  only that the server serves the right script and the right menu data. The config page needed a
+  real-browser pass to catch a real bug (the script-nesting issue) before it actually worked; this
+  renderer hasn't had that pass yet.
+
 ## Still to verify on 12.x
 - Local extras discovery rules (folder names / suffixes) — how an admin would organize
   `*.menu.json`/`*.binding.json` per library item in the general case; sidestepped for the Thor
   test via an explicit `MenusPath`.
+- `Web/discmenus.js`'s actual behavior in a real browser — the button appearing, the overlay
+  rendering correctly, keyboard nav, and the details-page navigation actually working. Only the
+  underlying API calls and jellyfin-apiclient method signatures have been verified so far, not a
+  live click-through.
 
 ## Development
 
@@ -322,12 +376,16 @@ requests have no associated user, so any endpoint needing one (ours accept an ex
    an admin can Link, Ignore, or Reset any key by hand — confirmed working end to end in a real
    logged-in dashboard session, after fixing the plugin-Id and config-page-script bugs described
    below.
-3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables —
-   **injection pipeline fully confirmed, real UI not started**. File Transformation is installed,
-   and script injection into `index.html` is confirmed working end to end, including actual
-   execution in a real browser (`[Disc Menus] renderer script loaded` in the console) — see "Web
-   menu renderer via File Transformation" above. `discmenus.js` is still just a placeholder — the
-   actual themed on-screen menu (grid layout, background art, wiring to the existing
-   `GET DiscMenus/{id}`/`SpecialFeatures` API, and when in the player lifecycle it should appear)
-   is the entire remaining scope of this item.
+3. Web menu renderer — **built, not yet browser-verified, real playback integration missing**.
+   File Transformation injection, the `GET DiscMenus/{id}/Menu` data source, and a real
+   `Web/discmenus.js` overlay renderer (floating button, full-screen menu, submenu/back nav,
+   keyboard support, themed from the menu's own `theme.json`) all exist and are individually
+   confirmed against the live server (see "Web menu renderer via File Transformation" and "The
+   renderer itself" above). What's not done: a real in-browser click-through of the renderer
+   itself, and true one-click playback — `playbackManager` isn't reachable from an externally
+   injected script, so entries currently navigate to the target item's details page instead of
+   playing it directly. "Themed with Jellyfin 12 CSS variables" turned out not to be achievable
+   as originally phrased — confirmed directly that Jellyfin 12's actual runtime theme variables
+   are far thinner than assumed (4 variables, no color palette) — so theming comes from the
+   menu's own `theme.json` instead.
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
