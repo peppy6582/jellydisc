@@ -28,6 +28,7 @@ public static class MenuFileLoader
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
     };
 
     public static MenuDocument LoadMenu(string path)
@@ -51,6 +52,9 @@ public static class MenuFileLoader
         return JsonSerializer.Deserialize<BindingDocument>(json, Options)
             ?? throw new JsonException($"'{path}' deserialized to null.");
     }
+
+    public static void SaveBinding(string path, BindingDocument binding)
+        => File.WriteAllText(path, JsonSerializer.Serialize(binding, Options));
 
     private static List<string> Validate(MenuDocument m)
     {

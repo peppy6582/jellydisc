@@ -17,7 +17,8 @@ public sealed class BindingDocument
     [JsonConverter(typeof(FlexibleGuidJsonConverter))]
     public Guid ParentItemId { get; init; }
 
-    public DateTimeOffset? ResolvedAt { get; init; }
+    /// <summary>Mutable: set by DiscMenuService.RunAutoMatch after each pass.</summary>
+    public DateTimeOffset? ResolvedAt { get; set; }
 
     public Dictionary<string, ExtraBinding> Bindings { get; init; } = new();
 }

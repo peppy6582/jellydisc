@@ -2,6 +2,7 @@ using System.Text.Json;
 using Jellyfin.Plugin.DiscMenus.Model;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using Jellyfin.Database.Implementations.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.DiscMenus;
@@ -31,9 +32,9 @@ public sealed class DiscMenuService
     /// Finds every "*.menu.json" / "*.binding.json" pair under the configured
     /// menus directory, keyed by the binding's parentItemId.
     /// </summary>
-    public IReadOnlyDictionary<Guid, (MenuDocument Menu, BindingDocument Binding)> ScanBindings()
+    public IReadOnlyDictionary<Guid, (MenuDocument Menu, BindingDocument Binding, string BindingPath)> ScanBindings()
     {
-        var result = new Dictionary<Guid, (MenuDocument, BindingDocument)>();
+        var result = new Dictionary<Guid, (MenuDocument, BindingDocument, string)>();
         if (!Directory.Exists(MenusPath))
         {
             return result;
@@ -61,7 +62,7 @@ public sealed class DiscMenuService
                     continue;
                 }
 
-                result[binding.ParentItemId] = (menu, binding);
+                result[binding.ParentItemId] = (menu, binding, bindingPath);
             }
             catch (Exception ex) when (ex is JsonException or MenuValidationException or IOException)
             {
@@ -77,6 +78,57 @@ public sealed class DiscMenuService
     }
 
     /// <summary>
+    /// Runs the duration matcher against a parent item's local extras and
+    /// writes any newly-matched (or newly-unmatched) bindings back to disk.
+    /// Bindings already Manual or Ignored are left untouched. There is no
+    /// linking UI yet; this only produces auto-match suggestions.
+    /// </summary>
+    /// <param name="user">
+    /// BaseItem.GetExtras requires a user for permission-scoping. Pass the
+    /// requesting admin (from a future API endpoint) or a designated
+    /// system/admin account for unattended runs.
+    /// </param>
+    public AutoMatchResult? RunAutoMatch(Guid parentItemId, User user)
+    {
+        if (!ScanBindings().TryGetValue(parentItemId, out var pair))
+        {
+            return null;
+        }
+
+        var (menu, binding, bindingPath) = pair;
+        if (_libraryManager.GetItemById(parentItemId) is not { } parentItem)
+        {
+            return null;
+        }
+
+        var candidates = parentItem.GetExtras(user)
+            .Where(e => e.ExtraType is not null && e.RunTimeTicks is not null)
+            .Select(e => new LocalExtraCandidate(e.Id, e.ExtraType!.Value, TimeSpan.FromTicks(e.RunTimeTicks!.Value).TotalSeconds))
+            .ToList();
+
+        var pending = menu.Extras
+            .Where(kv => !binding.Bindings.TryGetValue(kv.Key, out var existing)
+                || existing.Status is not (BindingStatus.Matched or BindingStatus.Ignored))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        var suggestions = DurationMatcher.Match(pending, candidates);
+        foreach (var (key, suggestion) in suggestions)
+        {
+            binding.Bindings[key] = suggestion;
+        }
+
+        binding.ResolvedAt = DateTimeOffset.UtcNow;
+        MenuFileLoader.SaveBinding(bindingPath, binding);
+
+        return new AutoMatchResult
+        {
+            Matched = suggestions.Values.Count(b => b.Status == BindingStatus.Matched),
+            Unmatched = suggestions.Values.Count(b => b.Status == BindingStatus.Unmatched),
+            Skipped = binding.Bindings.Count - suggestions.Count,
+        };
+    }
+
+    /// <summary>
     /// Resolves every playExtra/playSequence entry reachable from a parent
     /// item's bound menu to a local BaseItem: the item's Special Features as
     /// defined by its disc menu.
@@ -88,7 +140,7 @@ public sealed class DiscMenuService
             return Array.Empty<BaseItem>();
         }
 
-        var (menu, binding) = pair;
+        var (menu, binding, _) = pair;
         var extraKeys = menu.Menus.Values
             .SelectMany(m => m.Entries)
             .SelectMany(ExtraKeysOf)
@@ -120,4 +172,14 @@ public sealed class DiscMenuService
         PlaySequenceEntry e => e.Extras,
         _ => Array.Empty<string>(),
     };
+}
+
+public sealed class AutoMatchResult
+{
+    public required int Matched { get; init; }
+
+    public required int Unmatched { get; init; }
+
+    /// <summary>Bindings already Manual or Ignored, left untouched by this run.</summary>
+    public required int Skipped { get; init; }
 }

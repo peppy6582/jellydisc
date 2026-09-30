@@ -14,9 +14,12 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
   negative test cases. `pip install jsonschema && python3 tools/validate.py`
 - `Jellyfin.Plugin.DiscMenus/` – the plugin itself. `Model/` mirrors the two schemas
   as C# POCOs (reusing Jellyfin's own `ExtraType`/`ImageType` enums); `MenuFileLoader`
-  loads + runs the same semantic checks as `validate.py`; `DiscMenuService` resolves a
-  parent item's bound menu to local `BaseItem`s (its Special Features). No config page,
-  matcher, or web renderer yet – see "Planned build order".
+  loads/saves + runs the same semantic checks as `validate.py`; `DiscMenuService` resolves
+  a parent item's bound menu to local `BaseItem`s (its Special Features) and runs
+  `DurationMatcher` to auto-fill bindings. No config page, manual-linking UI, or web
+  renderer yet – see "Planned build order".
+- `Jellyfin.Plugin.DiscMenus.Tests/` – xUnit tests for `DurationMatcher` (the tolerance/
+  ordinal/tiebreak edge cases). `docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests`
 - `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
   packaging a release zip.
 
@@ -54,9 +57,10 @@ docker compose down                      # stops dev; volumes persist
 
 **VS Code:** open the folder and *Reopen in Container* (`.devcontainer/`
 attaches to the `dev` service), or just open it and use the tasks — `validate
-schemas` is the default test task, `dotnet build` the default build task.
-`.vscode/settings.json` binds `*.menu.json` and `*.binding.json` to their
-schemas so you get validation while typing, not only when the validator runs.
+schemas` is the default test task, `dotnet build` the default build task, and
+`dotnet test` runs the C# unit tests. `.vscode/settings.json` binds
+`*.menu.json` and `*.binding.json` to their schemas so you get validation
+while typing, not only when the validator runs.
 
 Volumes: `jdm_nuget` (package cache), `jdm_artifacts` (bin/obj), `jdm_pip`.
 All on the cache pool, none on the flash.
@@ -68,6 +72,11 @@ All on the cache pool, none on the flash.
    discover `*.menu.json`/`*.binding.json` pairs per-library-item (currently a flat
    configured directory scanned by `parentItemId`), and wiring `GetSpecialFeatures` into
    whatever the real SpecialFeatures endpoint/API surface turns out to be.
-2. Duration auto-match + manual linking UI
+2. Duration auto-match + manual linking UI — **auto-match done, UI not started**.
+   `DurationMatcher` + `DiscMenuService.RunAutoMatch` match by type + duration (± tolerance),
+   fall back to ordinal position on ambiguity, and persist results back to the binding file
+   without touching bindings already Manual/Ignored. Covered by unit tests. Still missing: a
+   way to trigger it (no config page or API endpoint calls it yet) and the manual-linking UI
+   for whatever it can't resolve.
 3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
