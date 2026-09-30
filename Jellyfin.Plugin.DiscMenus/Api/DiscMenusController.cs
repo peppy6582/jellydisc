@@ -1,4 +1,5 @@
 using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Plugin.DiscMenus.Model;
 using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +24,28 @@ public sealed class DiscMenusController : ControllerBase
     {
         _discMenuService = discMenuService;
         _userManager = userManager;
+    }
+
+    /// <summary>Every bound menu found under the configured menus directory, with match counts.</summary>
+    [HttpGet]
+    public ActionResult<IReadOnlyList<MenuBindingSummary>> ListBindings()
+    {
+        var summaries = _discMenuService.ScanBindings()
+            .Select(kv =>
+            {
+                var (menu, binding, _) = kv.Value;
+                return new MenuBindingSummary
+                {
+                    ParentItemId = kv.Key,
+                    MenuId = menu.MenuId,
+                    MenuTitle = menu.Menus.TryGetValue(menu.Root, out var rootMenu) ? rootMenu.Title : menu.Root,
+                    Matched = binding.Bindings.Values.Count(b => b.Status == BindingStatus.Matched),
+                    Unmatched = binding.Bindings.Values.Count(b => b.Status == BindingStatus.Unmatched),
+                    Ignored = binding.Bindings.Values.Count(b => b.Status == BindingStatus.Ignored),
+                };
+            })
+            .ToList();
+        return Ok(summaries);
     }
 
     /// <summary>The local Special Feature item IDs a parent item's bound menu currently resolves to.</summary>
@@ -50,4 +73,19 @@ public sealed class DiscMenusController : ControllerBase
         var result = _discMenuService.RunAutoMatch(parentItemId, user);
         return result is null ? NotFound($"No disc menu bound to item '{parentItemId}'.") : Ok(result);
     }
+}
+
+public sealed class MenuBindingSummary
+{
+    public required Guid ParentItemId { get; init; }
+
+    public required Guid MenuId { get; init; }
+
+    public required string MenuTitle { get; init; }
+
+    public required int Matched { get; init; }
+
+    public required int Unmatched { get; init; }
+
+    public required int Ignored { get; init; }
 }

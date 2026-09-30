@@ -16,10 +16,14 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
   as C# POCOs (reusing Jellyfin's own `ExtraType`/`ImageType` enums); `MenuFileLoader`
   loads/saves + runs the same semantic checks as `validate.py`; `DiscMenuService` resolves
   a parent item's bound menu to local `BaseItem`s (its Special Features) and runs
-  `DurationMatcher` to auto-fill bindings, and `Api/DiscMenusController` exposes both over
-  HTTP (`GET DiscMenus/{parentItemId}/SpecialFeatures`, `POST DiscMenus/{parentItemId}/AutoMatch`),
-  admin-gated via `[Authorize(Policy = "RequiresElevation")]`. No config page or manual-linking
-  UI yet – see "Planned build order".
+  `DurationMatcher` to auto-fill bindings, and `Api/DiscMenusController` exposes all three over
+  HTTP (`GET DiscMenus`, `GET DiscMenus/{parentItemId}/SpecialFeatures`,
+  `POST DiscMenus/{parentItemId}/AutoMatch`), admin-gated via
+  `[Authorize(Policy = "RequiresElevation")]`. `Configuration/configPage.html` is a minimal
+  admin page (registered via `IHasWebPages`) listing bound menus with match counts and an
+  Auto-Match button per row; **untested against a live server** (see "Still to verify on
+  12.x"). No manual-linking UI yet for whatever auto-match can't resolve – see
+  "Planned build order".
 - `Jellyfin.Plugin.DiscMenus.Tests/` – xUnit tests for `DurationMatcher` (the tolerance/
   ordinal/tiebreak edge cases). `docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests`
 - `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
@@ -40,6 +44,13 @@ with `ordinal` as a tiebreaker, then manual linking. Never by filename.
 - `"RequiresElevation"` as the admin-only authorization policy name — used by
   `Api/DiscMenusController`, follows a convention seen in other Jellyfin plugins' source,
   not confirmed against 12.x directly (no running server to test against yet)
+- The config page's JS (`ApiClient.getPluginConfiguration`/`updatePluginConfiguration`/`ajax`,
+  `Dashboard.showLoadingMsg`/`processPluginConfigurationUpdateResult`, the `pageshow` lifecycle
+  event, `data-role`/`is="emby-*"` markup conventions) follows the long-standing Jellyfin plugin
+  config-page pattern (part of jellyfin-web, largely independent of server-side API changes),
+  but has never been loaded in an actual Jellyfin instance. Confirmed only: the embedded
+  resource name (`Jellyfin.Plugin.DiscMenus.Configuration.configPage.html`) exactly matches
+  what `Plugin.GetPages()` constructs, checked by inspecting the built DLL's manifest resources.
 
 ## Development
 
@@ -74,16 +85,17 @@ All on the cache pool, none on the flash.
 ## Planned build order
 1. Plugin: local JSON load/validate, expose entries as Special Features — **scaffolded**.
    Loading, semantic validation, and resolving a bound menu's entries to local `BaseItem`s
-   work and are reachable via `GET DiscMenus/{parentItemId}/SpecialFeatures` (see
-   `Jellyfin.Plugin.DiscMenus/`). Still missing: a config page, a way to actually discover
+   work and are reachable via `GET DiscMenus/{parentItemId}/SpecialFeatures` and the config
+   page (see `Jellyfin.Plugin.DiscMenus/`). Still missing: a way to actually discover
    `*.menu.json`/`*.binding.json` pairs per-library-item (currently a flat configured
    directory scanned by `parentItemId`), and confirming how this should relate to Jellyfin's
    own client-facing SpecialFeatures endpoint (see "Still to verify on 12.x").
-2. Duration auto-match + manual linking UI — **auto-match + API done, UI not started**.
-   `DurationMatcher` + `DiscMenuService.RunAutoMatch` match by type + duration (± tolerance),
-   fall back to ordinal position on ambiguity, and persist results back to the binding file
-   without touching bindings already Manual/Ignored. Covered by unit tests. Reachable now via
-   `POST DiscMenus/{parentItemId}/AutoMatch`. Still missing: the manual-linking UI for whatever
-   it can't resolve, and any admin page to actually call this from.
+2. Duration auto-match + manual linking UI — **auto-match + API + list page done, manual
+   linking not started**. `DurationMatcher` + `DiscMenuService.RunAutoMatch` match by type +
+   duration (± tolerance), fall back to ordinal position on ambiguity, and persist results
+   back to the binding file without touching bindings already Manual/Ignored. Covered by unit
+   tests. Reachable via `POST DiscMenus/{parentItemId}/AutoMatch` or the config page's
+   per-row Auto-Match button. Still missing: a UI for manually linking whatever auto-match
+   can't resolve (the config page only lists counts today, not individual unmatched keys).
 3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
