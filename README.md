@@ -30,9 +30,10 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
   admin page (registered via `IHasWebPages`, `EnableInMainMenu = true` under the `server` menu
   section so it shows in the dashboard sidebar) listing bound menus with match counts, an
   Auto-Match button per row, and a "Details" panel per menu for manually linking, ignoring,
-  or resetting individual extra keys. Deployed and end-to-end tested against real library data
-  on a real 12.1.0 server (see "End-to-end test against real data" below); only the page's
-  in-browser JS itself (as opposed to the API it calls) hasn't run in an actual browser yet.
+  or resetting individual extra keys. Deployed and confirmed fully working end to end in a real
+  logged-in browser session against real library data — sidebar entry, detail page, and every
+  JS-driven feature on the config page itself (see "End-to-end test against real data" and the
+  two "Fixed:" sections below for what broke along the way and why).
 - `Jellyfin.Plugin.DiscMenus.Tests/` – xUnit tests for `DurationMatcher` (the tolerance/
   ordinal/tiebreak edge cases). `docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests`
 - `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
@@ -109,11 +110,9 @@ action and failed only because API-key auth has no associated user
 (`UserManager.GetUserById(Guid.Empty)` threw), which is exactly the scenario our own endpoints'
 explicit `userId` parameter (with a `GetFirstUser()` fallback) was designed to avoid.
 
-**Still not verified**: the config page's actual browser-side JS (`ApiClient`/`Dashboard`
-globals, the `pageshow` lifecycle) — everything above was curl/API-key testing, not a logged-in
-dashboard session in a real browser. The PascalCase-JSON assumption the JS depends on **is now
-confirmed** (every response above came back PascalCase, e.g. `"ParentItemId"`, `"MenuTitle"`),
-which was the main risk in that area.
+At this point everything above was curl/API-key testing, not a logged-in dashboard session in a
+real browser — the config page's actual JS execution was confirmed separately, and needed two
+more fixes first; see the two "Fixed:" sections below.
 
 ## Fixed: plugin Id resetting to Guid.Empty on every startup (2026-09-30)
 After the Thor test above, the dashboard showed almost nothing for this plugin (no working
@@ -145,16 +144,35 @@ match — they are two independent hardcoded copies of the same value with nothi
 stay in sync.**
 
 Also added in this pass: `GetPages()` now sets `EnableInMainMenu = true`, `MenuSection =
-"server"`, `MenuIcon = "extension"` so the config page shows in the dashboard's left sidebar,
-per the well-established (if not directly re-verified for 12.x) Jellyfin plugin convention.
+"server"`, `MenuIcon = "extension"` so the config page shows in the dashboard's left sidebar.
+Confirmed working after the `Id` fix above — the sidebar entry (built from `GET
+/web/ConfigurationPages`, filtered by `EnableInMainMenu`) and the plugin detail page's Settings
+link (which matches `configurationPage` to the plugin by `PluginId`) both depend on a real,
+non-empty plugin `Id`, so this had been silently broken by the exact same root cause.
+`MenuSection` itself turned out to be vestigial in current jellyfin-web (grepped the actual
+source — it's read nowhere; only `EnableInMainMenu` and `MenuIcon` matter), but it's harmless to
+keep set.
+
+## Fixed: config page JS never ran — script was a sibling of the page `<div>`, not inside it (2026-09-30)
+Once the sidebar/detail-page fix above landed, the config page itself loaded (not just the bare
+manifest), but **nothing JS-driven populated** — neither the "Menus directory" field nor the
+"Bound Menus" table, even though the underlying API calls both depend on were independently
+confirmed working via curl. Both symptoms from one cause: `viewContainer.js` (jellyfin-web)
+extracts `div[data-role="page"]` from the fetched HTML and inserts *that* into the live DOM —
+our `<script>` tag was a sibling of that div (both direct children of `<body>`), not nested
+inside it, so it was never part of what got extracted and simply never reached the DOM at all.
+(A real, if ultimately irrelevant, side-finding from chasing this down first: jQuery genuinely
+is exposed as `window.jQuery` in the current client — confirmed directly in-browser — so the
+theory that script execution requires jQuery's `.appendTo()` doesn't explain this; the simpler
+structural bug does.) **Fix**: moved the `<script>` block to be the last child inside
+`<div id="DiscMenusConfigPage">`, before its closing tag, instead of after it. Confirmed working
+end to end in a real logged-in browser session — this was the last unverified piece of the
+whole plugin.
 
 ## Still to verify on 12.x
 - Local extras discovery rules (folder names / suffixes) — how an admin would organize
   `*.menu.json`/`*.binding.json` per library item in the general case; sidestepped for the Thor
   test via an explicit `MenusPath`.
-- The config page's browser-side JS specifically (dashboard globals, click handlers) — the data
-  it depends on (JSON casing, all API responses) is now confirmed; only the DOM/JS execution
-  itself hasn't run in a real browser.
 - `MenuSection = "server"` / `MenuIcon = "extension"` actually placing the page in the dashboard
   sidebar as expected — the server-side wiring compiles and loads without error, but placement
   and rendering can only be confirmed by looking at the actual dashboard.
@@ -221,14 +239,14 @@ requests have no associated user, so any endpoint needing one (ours accept an ex
    `GET DiscMenus/{parentItemId}/SpecialFeatures` and the config page. Still missing: a way to
    actually discover `*.menu.json`/`*.binding.json` pairs per-library-item in general (the Thor
    test used an explicit `MenusPath`, not per-item discovery — see "Still to verify on 12.x").
-2. Duration auto-match + manual linking UI — **done, proven against real data**.
+2. Duration auto-match + manual linking UI — **done, fully confirmed in a real browser**.
    `DurationMatcher` + `DiscMenuService.RunAutoMatch` match by type + duration (± tolerance),
    fall back to ordinal position on ambiguity, and persist results back to the binding file
    without touching bindings already Manual/Ignored (covered by unit tests, and now also a real
    5/5 correct auto-match against actual local extras). The config page's per-menu "Details"
    panel lists every extra key with its current status and a dropdown of local candidates, so
-   an admin can Link, Ignore, or Reset any key by hand — the underlying API for all three was
-   exercised directly and works correctly. Only the config page's in-browser JS itself hasn't
-   been clicked through in a real dashboard session yet.
+   an admin can Link, Ignore, or Reset any key by hand — confirmed working end to end in a real
+   logged-in dashboard session, after fixing the plugin-Id and config-page-script bugs described
+   below.
 3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
