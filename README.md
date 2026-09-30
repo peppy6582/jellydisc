@@ -24,9 +24,9 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
   `[Authorize(Policy = "RequiresElevation")]`. `Configuration/configPage.html` is a minimal
   admin page (registered via `IHasWebPages`) listing bound menus with match counts, an
   Auto-Match button per row, and a "Details" panel per menu for manually linking, ignoring,
-  or resetting individual extra keys. Deployed and loads cleanly on a real 12.1.0 server (see
-  "Verified against a live server" below); the page's in-browser JS specifically is still
-  unverified.
+  or resetting individual extra keys. Deployed and end-to-end tested against real library data
+  on a real 12.1.0 server (see "End-to-end test against real data" below); only the page's
+  in-browser JS itself (as opposed to the API it calls) hasn't run in an actual browser yet.
 - `Jellyfin.Plugin.DiscMenus.Tests/` – xUnit tests for `DurationMatcher` (the tolerance/
   ordinal/tiebreak edge cases). `docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests`
 - `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
@@ -64,19 +64,58 @@ restarted. Confirmed by server log + direct HTTP requests, not just compiling:
   `autoUpdate`, `imagePath`, `assemblies: []` — `assemblies` empty even for real working
   plugins, so it isn't what drives DLL discovery). See "Deploying" below.
 
-**Not yet verified even after this**: the config page's actual JS behavior inside the real
-dashboard iframe (`ApiClient`/`Dashboard` globals, the `pageshow` lifecycle, and the assumption
-that JSON responses are PascalCase, e.g. `item.MenuTitle`) — that needs a logged-in browser
-session, which this check didn't have. Same for exercising `AutoMatch`/`Link`/`Ignore`/`Reset`
-against real local extras — no `*.menu.json`/`*.binding.json` pair has been placed on this
-server yet to test against.
+## End-to-end test against real data: Thor: Ragnarok (2026-09-30)
+Set `MenusPath` explicitly (hand-wrote
+`/mnt/cache/appdata/Jellyfin/data/plugins/configurations/Jellyfin.Plugin.DiscMenus.xml`,
+matching the plain `<PluginConfiguration><MenusPath>...` shape of other installed plugins'
+config XML) to `/config/data/discmenus/menus`, then built a real menu/binding pair from the
+actual "Thor: Ragnarok" (2017) entry in the 4K library — found via direct read-only queries
+against `jellyfin.db` (provider IDs Tmdb 284053 / Imdb tt3501632, and its 5 real local extras
+with their real durations), schema-validated with `tools/validate.py`'s underlying jsonschema
+check, then exercised every endpoint using the pre-existing "Claude" API key found in the
+`ApiKeys` table:
+
+- `GET /DiscMenus` and `GET /DiscMenus/{id}` — correctly list the menu and all 5 extras as
+  Unmatched before any match has run.
+- `GET /DiscMenus/{id}/Candidates` — returned exactly the 5 real local extras (name, type,
+  duration) straight from `BaseItem.GetExtras`.
+- `POST /DiscMenus/{id}/AutoMatch` — matched **5/5 correctly** on the first run (all unique
+  by duration alone, confidence 1.0 since the menu's `durationSec` came directly from the same
+  `RunTimeTicks`), and the binding file on disk updated correctly (N-format GUIDs, schema-valid).
+- `GET /DiscMenus/{id}/SpecialFeatures` — returned exactly those 5 resolved item IDs.
+- `POST .../Bindings/{key}/Ignore` then `AutoMatch` again — correctly reported
+  `{Matched:0, Skipped:5}`, leaving the ignored key alone.
+- `POST .../Bindings/{key}/Reset` then `AutoMatch` again — correctly re-matched just that one
+  key (`{Matched:1, Skipped:4}`).
+- `POST .../Bindings/{key}/Link?itemId=...` — correctly set status Matched / method Manual /
+  confidence 1.
+
+Zero exceptions in the server log across the whole sequence. This is the strongest evidence
+so far that `DurationMatcher`, `DiscMenuService`, and the controller all work correctly against
+real data, not just unit tests and synthetic examples. The test menu/binding pair is still in
+place on this server (`thor-ragnarok.menu.json`/`.binding.json` under the path above) as a
+working example — Thor: Ragnarok's Special Features are, as a side effect, now genuinely
+resolvable through this plugin.
+
+Also resolved by this test: hitting Jellyfin's own native endpoint (unrelated to this plugin)
+at `GET /Items/{itemId}/SpecialFeatures` confirmed that path is real — it reached a controller
+action and failed only because API-key auth has no associated user
+(`UserManager.GetUserById(Guid.Empty)` threw), which is exactly the scenario our own endpoints'
+explicit `userId` parameter (with a `GetFirstUser()` fallback) was designed to avoid.
+
+**Still not verified**: the config page's actual browser-side JS (`ApiClient`/`Dashboard`
+globals, the `pageshow` lifecycle) — everything above was curl/API-key testing, not a logged-in
+dashboard session in a real browser. The PascalCase-JSON assumption the JS depends on **is now
+confirmed** (every response above came back PascalCase, e.g. `"ParentItemId"`, `"MenuTitle"`),
+which was the main risk in that area.
 
 ## Still to verify on 12.x
-- SpecialFeatures endpoint path (Jellyfin's own, for clients — distinct from this plugin's
-  `Api/DiscMenusController`, which is our own management API, not a client playback path)
-- Local extras discovery rules (folder names / suffixes)
-- The config page's browser-side JS and the PascalCase-JSON assumption — see the live-server
-  section above for exactly what is and isn't covered by non-browser testing.
+- Local extras discovery rules (folder names / suffixes) — how an admin would organize
+  `*.menu.json`/`*.binding.json` per library item in the general case; sidestepped for the Thor
+  test via an explicit `MenusPath`.
+- The config page's browser-side JS specifically (dashboard globals, click handlers) — the data
+  it depends on (JSON casing, all API responses) is now confirmed; only the DOM/JS execution
+  itself hasn't run in a real browser.
 
 ## Development
 
@@ -126,22 +165,28 @@ Check `/mnt/cache/appdata/Jellyfin/log/log_<date>.log` for `Loaded plugin: "Disc
 exceptions. The folder must be renamed (old one removed) on every version bump — Jellyfin
 doesn't overwrite a differently-versioned folder for the same plugin guid.
 
+**Testing the API directly:** there's a standing Jellyfin API key named "Claude" in the
+`ApiKeys` table of `/mnt/cache/appdata/Jellyfin/data/data/jellyfin.db`, meant for exactly this
+kind of automated testing. Use it as `Authorization: MediaBrowser Token="<token>"`. API-key
+requests have no associated user, so any endpoint needing one (ours accept an explicit
+`userId` query param) needs it passed explicitly or falls back to the server's first user.
+
 ## Planned build order
-1. Plugin: local JSON load/validate, expose entries as Special Features — **scaffolded**.
-   Loading, semantic validation, and resolving a bound menu's entries to local `BaseItem`s
-   work and are reachable via `GET DiscMenus/{parentItemId}/SpecialFeatures` and the config
-   page (see `Jellyfin.Plugin.DiscMenus/`). Still missing: a way to actually discover
-   `*.menu.json`/`*.binding.json` pairs per-library-item (currently a flat configured
-   directory scanned by `parentItemId`), and confirming how this should relate to Jellyfin's
-   own client-facing SpecialFeatures endpoint (see "Still to verify on 12.x").
-2. Duration auto-match + manual linking UI — **done, loads cleanly on a real server, behavior
-   under real data not yet exercised**. `DurationMatcher` + `DiscMenuService.RunAutoMatch` match
-   by type + duration (± tolerance), fall back to ordinal position on ambiguity, and persist
-   results back to the binding file without touching bindings already Manual/Ignored (covered
-   by unit tests). The config page's per-menu "Details" panel lists every extra key with its
-   current status and a dropdown of local candidates, so an admin can Link, Ignore, or Reset
-   any key by hand. Deployed to this box's real Jellyfin 12.1.0 (see "Verified against a live
-   server"); still needs an actual `*.menu.json`/`*.binding.json` pair placed and a logged-in
-   browser session to exercise the full flow end to end.
+1. Plugin: local JSON load/validate, expose entries as Special Features — **done, proven
+   against real data**. Loading, semantic validation, and resolving a bound menu's entries to
+   local `BaseItem`s work — confirmed end to end against the real "Thor: Ragnarok" 4K library
+   entry (see "End-to-end test against real data"), reachable via
+   `GET DiscMenus/{parentItemId}/SpecialFeatures` and the config page. Still missing: a way to
+   actually discover `*.menu.json`/`*.binding.json` pairs per-library-item in general (the Thor
+   test used an explicit `MenusPath`, not per-item discovery — see "Still to verify on 12.x").
+2. Duration auto-match + manual linking UI — **done, proven against real data**.
+   `DurationMatcher` + `DiscMenuService.RunAutoMatch` match by type + duration (± tolerance),
+   fall back to ordinal position on ambiguity, and persist results back to the binding file
+   without touching bindings already Manual/Ignored (covered by unit tests, and now also a real
+   5/5 correct auto-match against actual local extras). The config page's per-menu "Details"
+   panel lists every extra key with its current status and a dropdown of local candidates, so
+   an admin can Link, Ignore, or Reset any key by hand — the underlying API for all three was
+   exercised directly and works correctly. Only the config page's in-browser JS itself hasn't
+   been clicked through in a real dashboard session yet.
 3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
