@@ -1,0 +1,50 @@
+using System.Text.Json.Serialization;
+
+namespace Jellyfin.Plugin.DiscMenus.Model;
+
+/// <summary>
+/// Mirrors schema/menu.schema.json's $defs/entry oneOf. Discriminated by
+/// <see cref="Action"/>; see <see cref="MenuEntryJsonConverter"/>.
+/// </summary>
+[JsonConverter(typeof(MenuEntryJsonConverter))]
+public abstract class MenuEntry
+{
+    public required string Action { get; init; }
+
+    public required string Label { get; init; }
+}
+
+/// <summary>Play the main feature, optionally from a chapter.</summary>
+public sealed class PlayFeatureEntry : MenuEntry
+{
+    public int? StartChapter { get; init; }
+}
+
+/// <summary>Play one extra, resolved via the binding file.</summary>
+public sealed class PlayExtraEntry : MenuEntry
+{
+    public required string Extra { get; init; }
+}
+
+/// <summary>Play several extras in order (a "Play All").</summary>
+public sealed class PlaySequenceEntry : MenuEntry
+{
+    public required List<string> Extras { get; init; }
+}
+
+/// <summary>Open another menu.</summary>
+public sealed class SubmenuEntry : MenuEntry
+{
+    public required string Menu { get; init; }
+}
+
+/// <summary>Scene selection generated from the feature's chapters.</summary>
+public sealed class ChaptersEntry : MenuEntry
+{
+    public int? PerPage { get; init; }
+}
+
+/// <summary>Return to the previous menu.</summary>
+public sealed class BackEntry : MenuEntry
+{
+}

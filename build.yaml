@@ -1,0 +1,19 @@
+name: "Disc Menus"
+guid: "913b9d44-cafe-4fe7-ae0b-f1362dc12cc7"
+version: "0.1.0.0"
+targetAbi: "12.0.0.0"
+framework: "net10.0"
+owner: "peppy6582"
+overview: "User-authored, shareable disc menus for Jellyfin special features."
+description: >
+  Loads user-authored disc menu definitions (schema/menu.schema.json),
+  resolves them against a local, never-shared binding file
+  (schema/binding.schema.json), and exposes the matched entries as the
+  parent item's Special Features.
+category: "General"
+artifacts:
+  - "Jellyfin.Plugin.DiscMenus.dll"
+changelog: >
+  - 0.1.0.0: Initial scaffold. Loads and validates disc-menu JSON and
+    exposes matched entries as local Special Features. No config page, no
+    duration auto-matcher, no web renderer yet.

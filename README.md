@@ -12,6 +12,13 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
 - `tools/validate.py` – JSON Schema validation plus cross-reference checks the schema
   can't express (dangling extra/menu keys, menus unreachable from `root`), with
   negative test cases. `pip install jsonschema && python3 tools/validate.py`
+- `Jellyfin.Plugin.DiscMenus/` – the plugin itself. `Model/` mirrors the two schemas
+  as C# POCOs (reusing Jellyfin's own `ExtraType`/`ImageType` enums); `MenuFileLoader`
+  loads + runs the same semantic checks as `validate.py`; `DiscMenuService` resolves a
+  parent item's bound menu to local `BaseItem`s (its Special Features). No config page,
+  matcher, or web renderer yet – see "Planned build order".
+- `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
+  packaging a release zip.
 
 ## Matching
 Extras are matched by `type` (Jellyfin ExtraType) + `durationSec` (± `toleranceSec`),
@@ -55,7 +62,12 @@ Volumes: `jdm_nuget` (package cache), `jdm_artifacts` (bin/obj), `jdm_pip`.
 All on the cache pool, none on the flash.
 
 ## Planned build order
-1. Plugin: local JSON load/validate, expose entries as Special Features
+1. Plugin: local JSON load/validate, expose entries as Special Features — **scaffolded**.
+   Loading, semantic validation, and resolving a bound menu's entries to local `BaseItem`s
+   work (see `Jellyfin.Plugin.DiscMenus/`). Still missing: a config page, a way to actually
+   discover `*.menu.json`/`*.binding.json` pairs per-library-item (currently a flat
+   configured directory scanned by `parentItemId`), and wiring `GetSpecialFeatures` into
+   whatever the real SpecialFeatures endpoint/API surface turns out to be.
 2. Duration auto-match + manual linking UI
 3. Web menu renderer (via File Transformation), themed with Jellyfin 12 CSS variables
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
