@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "menuId": "5d31d43c-cb6b-4886-93ad-7d2028f4dc00",
-  "revision": 2,
+  "revision": 3,
   "meta": {
     "author": "example",
     "language": "en-US",
-    "notes": "EXAMPLE 4 - local artwork. The background and the button banner are image files served from the menus 'assets' folder via asset: references (copy examples/assets/local-art/ into <your menus folder>/assets/local-art/). The shipped images are plain generated placeholders; swap in real art with the same names, or point the references at your own files. Extras are illustrative. Scene Selection is styled by its own \"scenes\" menu: a full-screen grid with the banner switched off for that screen."
+    "notes": "EXAMPLE 4 - local artwork and audio. Background, banner and looping music are files served from the menus 'assets' folder via asset: references (copy examples/assets/local-art/ to <menus folder>/assets/local-art/). The shipped files are generated placeholders; swap in your own with the same names. Scene Selection is styled by a 'scenes' menu. Also: zoom transitions, chime sounds. Extras are illustrative."
   },
   "match": { "itemType": "Movie", "providerIds": {"Tmdb": "155", "Imdb": "tt0468569"}, "release": {"edition": "Example", "format": "BluRay", "region": "A", "year": 2008} },
   "background": { "source": "image", "image": "asset:local-art/background.webp", "dim": 0 },
@@ -25,7 +25,8 @@
     "buttonStyle": "text",
     "layers": [
       { "type": "image", "image": "asset:local-art/banner.webp", "position": {"x": 50, "y": 95, "w": 86, "h": 20, "anchor": "bottom"}, "fit": "contain" }
-    ]
+    ],
+    "transition": { "style": "zoom", "durationMs": 350 }
   },
   "extras": {
     "making-of": { "type": "BehindTheScenes", "durationSec": 1320 },
@@ -66,5 +67,6 @@
       },
       "entries": [{"action":"home", "label":"Main Menu"}]
     }
-  }
+  },
+  "audio": { "music": {"source": "file", "file": "asset:local-art/ambient.wav", "volume": 0.35}, "sounds": {"preset": "chime", "volume": 0.35} }
 }

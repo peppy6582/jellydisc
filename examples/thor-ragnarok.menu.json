@@ -5,7 +5,7 @@
   "meta": {
     "author": "phillip",
     "language": "en-US",
-    "notes": "EXAMPLE 5 - a real menu (Thor: Ragnarok, UHD) using everything: Official Trailer behind the menu, one banner layer declared once and inherited by every menu, hand-placed main buttons, and a paged Special Features grid with Home. Its artwork (asset:thor-ragnarok/background.webp, menu-banner.webp) is NOT included - it belongs to the studio. Supply your own images with those names or change the references; without them the menu works, minus the pictures."
+    "notes": "EXAMPLE 5 - a real menu (Thor: Ragnarok, UHD): Official Trailer behind the menu, one banner declared once and inherited by every menu, hand-placed main buttons, paged Special Features with Home, styled scene selection, slide transitions, click sounds. Its artwork (asset:thor-ragnarok/background.webp, menu-banner.webp) is NOT included - it belongs to the studio. Supply your own images with those names; without them the menu works, minus the pictures."
   },
   "match": { "itemType": "Movie", "providerIds": {"Tmdb": "284053", "Imdb": "tt3501632"}, "release": {"format": "UHD", "year": 2017} },
   "background": { "source": "trailer", "trailerIndex": 0, "muted": true, "poster": "asset:thor-ragnarok/background.webp", "dim": 0.1 },
@@ -67,6 +67,8 @@
     "buttonStyle": "text",
     "layers": [
       { "type": "image", "image": "asset:thor-ragnarok/menu-banner.webp", "position": {"x": 50, "y": 97, "w": 86, "h": 19, "anchor": "bottom"}, "fit": "contain" }
-    ]
-  }
+    ],
+    "transition": { "style": "slide", "durationMs": 350 }
+  },
+  "audio": { "sounds": {"preset": "click", "volume": 0.4} }
 }

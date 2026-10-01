@@ -31,11 +31,13 @@ public static class MenuFileLoader
         WriteIndented = true,
     };
 
-    public static MenuDocument LoadMenu(string path)
+    public static MenuDocument LoadMenu(string path) => ParseMenu(File.ReadAllText(path), path);
+
+    /// <summary>Parses and fully validates menu JSON. <paramref name="source"/> only names it in errors.</summary>
+    public static MenuDocument ParseMenu(string json, string source = "menu")
     {
-        var json = File.ReadAllText(path);
         var doc = JsonSerializer.Deserialize<MenuDocument>(json, Options)
-            ?? throw new JsonException($"'{path}' deserialized to null.");
+            ?? throw new JsonException($"'{source}' deserialized to null.");
 
         var errors = Validate(doc);
         if (errors.Count > 0)
@@ -106,11 +108,84 @@ public static class MenuFileLoader
         }
     }
 
+    // https URL or asset: reference ending in a supported audio extension. Mirrors schema
+    // $defs/audioRef; enforced here too because the loader does not run JSON Schema.
+    private static readonly System.Text.RegularExpressions.Regex AudioRef = new(
+        "^(https://[^\\s\"'()<>\\\\]+|asset:[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,3}\\.(mp3|ogg|opus|m4a|wav))$",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly HashSet<string> TransitionStyles = new() { "none", "fade", "slide", "rise", "zoom", "wipe" };
+
+    private static readonly HashSet<string> SoundPresets = new() { "none", "click", "chime", "beep" };
+
+    private static void ValidateAudio(string where, AudioSpec? audio, List<string> errors)
+    {
+        if (audio is null)
+        {
+            return;
+        }
+
+        if (audio.Music is { } music)
+        {
+            if (music.Source is not ("file" or "themeSong" or "none"))
+            {
+                errors.Add($"{where} audio music source '{music.Source}' must be file, themeSong or none");
+            }
+
+            if (music.Source == "file" && (music.File is null || !AudioRef.IsMatch(music.File)))
+            {
+                errors.Add($"{where} audio music file must be an https URL or asset:<folder>/<file>.<mp3|ogg|opus|m4a|wav>");
+            }
+
+            if (music.Volume is < 0 or > 1)
+            {
+                errors.Add($"{where} audio music volume must be 0-1");
+            }
+        }
+
+        if (audio.Sounds is { } sounds)
+        {
+            if (sounds.Preset is not null && !SoundPresets.Contains(sounds.Preset))
+            {
+                errors.Add($"{where} audio sounds preset '{sounds.Preset}' must be none, click, chime or beep");
+            }
+
+            if (sounds.Volume is < 0 or > 1)
+            {
+                errors.Add($"{where} audio sounds volume must be 0-1");
+            }
+
+            foreach (var file in new[] { sounds.Move, sounds.Select, sounds.Back })
+            {
+                if (file is not null && !AudioRef.IsMatch(file))
+                {
+                    errors.Add($"{where} audio sound must be an https URL or asset:<folder>/<file>.<mp3|ogg|opus|m4a|wav>");
+                }
+            }
+        }
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex TmdbPath = new(
+        "^/[A-Za-z0-9_-]+\\.(jpg|png)$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static void ValidateBackground(string where, BackgroundSpec? b, List<string> errors)
     {
         if (b is { Source: BackgroundSource.Image } && (b.Image is null || !ImageRef.IsMatch(b.Image)))
         {
             errors.Add($"{where} background image must be an https URL, small data: URI or asset: reference");
+        }
+
+        if (b is { Source: BackgroundSource.Tmdb })
+        {
+            if (b.TmdbFilePath is null || !TmdbPath.IsMatch(b.TmdbFilePath))
+            {
+                errors.Add($"{where} background tmdbFilePath must look like /abc123.jpg (jpg or png)");
+            }
+
+            if (b.TmdbSize is not null and not ("w780" or "w1280" or "original"))
+            {
+                errors.Add($"{where} background tmdbSize must be w780, w1280 or original");
+            }
         }
 
         if (b?.Poster is not null && !ImageRef.IsMatch(b.Poster))
@@ -167,6 +242,19 @@ public static class MenuFileLoader
 
         CheckPosition($"{where} title", layout.TitlePosition, errors);
         CheckStyle(where, layout.ButtonStyle, errors);
+
+        if (layout.Transition is { } transition)
+        {
+            if (!TransitionStyles.Contains(transition.Style))
+            {
+                errors.Add($"{where} transition style '{transition.Style}' must be none, fade, slide, rise, zoom or wipe");
+            }
+
+            if (transition.DurationMs is < 0 or > 2000)
+            {
+                errors.Add($"{where} transition durationMs must be 0-2000");
+            }
+        }
 
         if (layout.Flow is { } flow)
         {
@@ -236,6 +324,7 @@ public static class MenuFileLoader
     private static void ValidatePresentation(string menuKey, MenuDef menu, MenuLayout? documentLayout, List<string> errors)
     {
         ValidateBackground(menuKey, menu.Background, errors);
+        ValidateAudio(menuKey, menu.Audio, errors);
         ValidateTheme(menuKey, menu.Theme, errors);
         ValidateLayout(menuKey, menu.Layout, errors);
 
@@ -314,6 +403,7 @@ public static class MenuFileLoader
 
         ValidateTheme("document", m.Theme, errors);
         ValidateBackground("document", m.Background, errors);
+        ValidateAudio("document", m.Audio, errors);
         ValidateLayout("document", m.Layout, errors);
         foreach (var (menuKey, menu) in m.Menus)
         {

@@ -14,9 +14,8 @@
 // details page. After playback stops the menu reopens where it was left.
 //
 // KNOWN LIMITATIONS:
-// - background.source "tmdb"/"fanart" aren't implemented - falls back to a
-//   plain dark background. Only "jellyfin" (the parent item's own images)
-//   and "color" work.
+// - background.source "fanart" isn't implemented - falls back to a plain dark
+//   background. "jellyfin", "tmdb", "image", "trailer" and "color" work.
 (function () {
     'use strict';
 
@@ -113,11 +112,14 @@
         menuStack = [menuDoc.Root];
         lastFocusIndex = {};
         menuPage = {};
-        renderOverlay(parentItemId);
+        preloadBackgrounds(parentItemId);
+        renderOverlay(parentItemId, 'intro');
     }
 
     function closeOverlay() {
         removeVideo();
+        stopMusic(400);
+        currentSounds = null;
         var existing = document.getElementById(OVERLAY_ID);
         if (existing) {
             existing.remove();
@@ -235,6 +237,7 @@
         var target = best || wrap;
         if (target) {
             target.focus();
+            playSound('move');
         }
     }
 
@@ -242,16 +245,20 @@
     // an on-screen Back button always goes up to the parent menu.
     function goBack(parentItemId, fromKey) {
         var topKey = menuStack[menuStack.length - 1];
+        if (fromKey) {
+            playSound('back');
+        }
+
         if (fromKey && (menuPage[topKey] || 0) > 0) {
             menuPage[topKey]--;
             lastFocusIndex[topKey] = 0;
-            renderOverlay(parentItemId);
+            renderOverlay(parentItemId, 'back');
             return;
         }
 
         if (menuStack.length > 1) {
             menuStack.pop();
-            renderOverlay(parentItemId);
+            renderOverlay(parentItemId, 'back');
         } else {
             closeOverlay();
         }
@@ -350,6 +357,42 @@
         }
     }
 
+    // TMDB's image server, addressed by the backdrop's file_path. The path is
+    // re-validated here (the server already did) so only /name.jpg or /name.png
+    // can ever be appended to the fixed TMDB host.
+    var TMDB_PATH = /^\/[A-Za-z0-9_-]+\.(jpg|png)$/;
+
+    function tmdbImageUrl(background) {
+        if (typeof background.TmdbFilePath !== 'string' || !TMDB_PATH.test(background.TmdbFilePath)) {
+            return null;
+        }
+
+        var size = background.TmdbSize === 'w780' || background.TmdbSize === 'original' ? background.TmdbSize : 'w1280';
+        return 'https://image.tmdb.org/t/p/' + size + background.TmdbFilePath;
+    }
+
+    // Warm the browser cache with every page's picture when the menu opens, so
+    // moving between pages with different backgrounds doesn't wait on the network.
+    function preloadBackgrounds(parentItemId) {
+        var all = [menuDoc.Background];
+        Object.keys(menuDoc.Menus).forEach(function (k) {
+            all.push(menuDoc.Menus[k].Background);
+        });
+        var seen = {};
+        all.forEach(function (b) {
+            var url = !b ? null
+                : b.Source === 'tmdb' ? tmdbImageUrl(b)
+                : b.Source === 'image' ? safeImage(b.Image)
+                : b.Source === 'jellyfin' && window.ApiClient
+                    ? ApiClient.getImageUrl(parentItemId, { type: b.ImageType || 'Backdrop', index: b.Index || 0 })
+                    : null;
+            if (url && !seen[url]) {
+                seen[url] = true;
+                new Image().src = url;
+            }
+        });
+    }
+
     function backgroundStyle(background, parentItemId) {
         if (!background) {
             return 'background-color:#101010;';
@@ -359,6 +402,18 @@
 
         if (background.Source === 'color' && background.Color) {
             return 'background-color:' + background.Color + ';';
+        }
+
+        if (background.Source === 'tmdb') {
+            var tmdbUrl = tmdbImageUrl(background);
+            if (tmdbUrl) {
+                return (
+                    'background-image:linear-gradient(rgba(0,0,0,' + dim + '),rgba(0,0,0,' + dim + ')),url(' + tmdbUrl + ');' +
+                    'background-size:cover;background-position:center;background-color:#101010;'
+                );
+            }
+
+            return 'background-color:#101010;';
         }
 
         if (background.Source === 'trailer') {
@@ -944,7 +999,363 @@
         }
     });
 
-    function renderOverlay(parentItemId) {
+    // ---- Audio -----------------------------------------------------------------
+    // Opt-in: nothing plays unless the menu (or the document default) sets
+    // audio. Music persists across menus that name the same track, like the
+    // trailer video, and everything stops when the menu closes. Browsers only
+    // allow audio after a user gesture; the viewer's click on "Disc Menu"
+    // counts, so this starts after it.
+
+    var music = { key: null, el: null };
+    var currentSounds = null;
+    var audioCtx = null;
+    var soundBuffers = {};
+    var lastMoveSound = 0;
+
+    var SAFE_AUDIO = /^(https:\/\/[^\s"'()<>\\]+|asset:[A-Za-z0-9][A-Za-z0-9._-]{0,63}(\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,3}\.(mp3|ogg|opus|m4a|wav))$/;
+
+    function clamp01(v, fallback) {
+        return typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
+    }
+
+    // Same defence in depth as images: only hand the browser URLs we'd vouch for.
+    function safeAudio(ref) {
+        if (typeof ref !== 'string' || !SAFE_AUDIO.test(ref)) {
+            return null;
+        }
+
+        if (ref.indexOf('asset:') === 0) {
+            return window.ApiClient
+                ? ApiClient.getUrl('DiscMenus/Assets/' + ref.slice(6).split('/').map(encodeURIComponent).join('/'))
+                : null;
+        }
+
+        return ref;
+    }
+
+    // A menu's own audio replaces the document default per part: its music
+    // replaces the default music, its sounds replace the default sounds.
+    function audioConfigFor(menu) {
+        var base = (menuDoc && menuDoc.Audio) || {};
+        var own = menu.Audio || {};
+        return { Music: own.Music || base.Music || null, Sounds: own.Sounds || base.Sounds || null };
+    }
+
+    function resolveMusicUrl(m) {
+        if (!m) {
+            return null;
+        }
+
+        if (m.Source === 'file') {
+            return safeAudio(m.File);
+        }
+
+        if (m.Source === 'themeSong') {
+            var songs = (menuDoc && menuDoc.ThemeSongs) || [];
+            return songs.length > 0 && window.ApiClient
+                ? ApiClient.getUrl('Audio/' + songs[0] + '/stream', { static: true, api_key: ApiClient.accessToken() })
+                : null;
+        }
+
+        return null;
+    }
+
+    function fadeVolume(el, to, ms, done) {
+        if (el.discMenusFade) {
+            clearInterval(el.discMenusFade);
+        }
+
+        var from = el.volume;
+        var steps = Math.max(1, Math.round(ms / 40));
+        var i = 0;
+        el.discMenusFade = setInterval(function () {
+            i++;
+            el.volume = Math.min(1, Math.max(0, from + ((to - from) * i) / steps));
+            if (i >= steps) {
+                clearInterval(el.discMenusFade);
+                el.discMenusFade = null;
+                if (done) {
+                    done();
+                }
+            }
+        }, 40);
+    }
+
+    function stopMusic(fadeMs) {
+        var el = music.el;
+        music = { key: null, el: null };
+        if (!el) {
+            return;
+        }
+
+        fadeVolume(el, 0, fadeMs, function () {
+            el.pause();
+            el.removeAttribute('src');
+        });
+    }
+
+    function syncMusic(spec) {
+        var url = spec && spec.Source !== 'none' ? resolveMusicUrl(spec) : null;
+        if (!url) {
+            stopMusic(600);
+            return;
+        }
+
+        var volume = clamp01(spec.Volume, 0.5);
+        if (music.el && music.key === url) {
+            fadeVolume(music.el, volume, 400);
+            return;
+        }
+
+        stopMusic(600); // the old track fades out while the new one fades in
+        var el = new Audio();
+        el.loop = true;
+        el.preload = 'auto';
+        el.volume = 0;
+        el.src = url;
+        music = { key: url, el: el };
+        var started = el.play();
+        if (started && started.catch) {
+            started.catch(function () {
+                console.info('[Disc Menus] the browser blocked music autoplay');
+            });
+        }
+
+        fadeVolume(el, volume, 800);
+    }
+
+    // Built-in button sounds, synthesised in the browser so a menu needs no
+    // audio files for basic feedback. Each tone: frequency, wave, length, level, delay.
+    var SOUND_PRESETS = {
+        click: {
+            move: [{ f: 1500, t: 'square', d: 0.025, g: 0.5 }],
+            select: [{ f: 1100, t: 'square', d: 0.04, g: 0.6 }, { f: 700, t: 'square', d: 0.05, g: 0.5, at: 0.04 }],
+            back: [{ f: 600, t: 'square', d: 0.05, g: 0.6 }],
+        },
+        chime: {
+            move: [{ f: 1320, t: 'sine', d: 0.12, g: 0.4 }],
+            select: [{ f: 880, t: 'sine', d: 0.2, g: 0.6 }, { f: 1320, t: 'sine', d: 0.3, g: 0.5, at: 0.08 }],
+            back: [{ f: 660, t: 'sine', d: 0.2, g: 0.5 }, { f: 440, t: 'sine', d: 0.25, g: 0.5, at: 0.08 }],
+        },
+        beep: {
+            move: [{ f: 880, t: 'sine', d: 0.04, g: 0.5 }],
+            select: [{ f: 1040, t: 'sine', d: 0.09, g: 0.6 }],
+            back: [{ f: 520, t: 'sine', d: 0.09, g: 0.6 }],
+        },
+    };
+
+    function audioContext() {
+        if (!audioCtx) {
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) {
+                return null;
+            }
+
+            try {
+                audioCtx = new Ctx();
+            } catch (e) {
+                return null;
+            }
+        }
+
+        if (audioCtx.state === 'suspended' && audioCtx.resume) {
+            audioCtx.resume();
+        }
+
+        return audioCtx;
+    }
+
+    function playTones(tones, volume) {
+        var ctx = audioContext();
+        if (!ctx) {
+            return;
+        }
+
+        var now = ctx.currentTime;
+        tones.forEach(function (n) {
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            var start = now + (n.at || 0);
+            osc.type = n.t;
+            osc.frequency.value = n.f;
+            gain.gain.setValueAtTime(0.0001, start);
+            gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume * n.g * 0.3), start + 0.005);
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + n.d);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(start);
+            osc.stop(start + n.d + 0.02);
+        });
+    }
+
+    function playElement(url, volume) {
+        var a = new Audio(url);
+        a.volume = volume;
+        var p = a.play();
+        if (p && p.catch) {
+            p.catch(function () { /* blocked or unsupported: stay silent */ });
+        }
+    }
+
+    function playBuffer(buffer, volume) {
+        var ctx = audioContext();
+        if (!ctx) {
+            return;
+        }
+
+        var src = ctx.createBufferSource();
+        var gain = ctx.createGain();
+        src.buffer = buffer;
+        gain.gain.value = volume;
+        src.connect(gain);
+        gain.connect(ctx.destination);
+        src.start();
+    }
+
+    // A sound file is decoded once and replayed from memory so repeated clicks
+    // don't re-download it; if decoding fails (e.g. a cross-origin file without
+    // CORS) fall back to a plain <audio> element.
+    function playFileSound(url, volume) {
+        var cached = soundBuffers[url];
+        if (cached === 'loading') {
+            return;
+        }
+
+        if (cached === 'failed' || !window.fetch || !audioContext()) {
+            playElement(url, volume);
+            return;
+        }
+
+        if (cached) {
+            playBuffer(cached, volume);
+            return;
+        }
+
+        soundBuffers[url] = 'loading';
+        fetch(url)
+            .then(function (r) { return r.arrayBuffer(); })
+            .then(function (data) { return audioContext().decodeAudioData(data); })
+            .then(function (buffer) {
+                soundBuffers[url] = buffer;
+                playBuffer(buffer, volume);
+            })
+            .catch(function () {
+                soundBuffers[url] = 'failed';
+                playElement(url, volume);
+            });
+    }
+
+    // kind: 'move' | 'select' | 'back'
+    function playSound(kind) {
+        var s = currentSounds;
+        if (!s) {
+            return;
+        }
+
+        if (kind === 'move') {
+            var t = Date.now();
+            if (t - lastMoveSound < 45) {
+                return; // key repeat shouldn't machine-gun
+            }
+
+            lastMoveSound = t;
+        }
+
+        var volume = clamp01(s.Volume, 0.5);
+        var file = safeAudio(kind === 'move' ? s.Move : kind === 'back' ? s.Back : s.Select);
+        if (file) {
+            playFileSound(file, volume);
+            return;
+        }
+
+        var preset = s.Preset && s.Preset !== 'none' ? SOUND_PRESETS[s.Preset] : null;
+        if (preset) {
+            playTones(preset[kind], volume);
+        }
+    }
+
+    function soundKindFor(entry) {
+        return entry.Action === 'back' || entry.Action === 'home' || entry.Action === 'pagePrev' ? 'back' : 'select';
+    }
+
+    // ---- Transitions -----------------------------------------------------------
+    // The buttons and title (the "screen") animate; the background, any trailer
+    // video, and layers shared by both menus stay put. Uses the Web Animations
+    // API with fixed keyframes chosen by name - menu JSON never supplies CSS.
+
+    function prefersReducedMotion() {
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    // dir: 'forward' (into a submenu / next page) or 'back'.
+    var TRANSITIONS = {
+        fade: function () {
+            return { out: [{ opacity: 1 }, { opacity: 0 }], 'in': [{ opacity: 0 }, { opacity: 1 }] };
+        },
+        slide: function (dir) {
+            var s = dir === 'back' ? -1 : 1;
+            return {
+                out: [{ opacity: 1, transform: 'translateX(0)' }, { opacity: 0, transform: 'translateX(' + -8 * s + '%)' }],
+                'in': [{ opacity: 0, transform: 'translateX(' + 8 * s + '%)' }, { opacity: 1, transform: 'translateX(0)' }],
+            };
+        },
+        rise: function (dir) {
+            var s = dir === 'back' ? -1 : 1;
+            return {
+                out: [{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(' + -6 * s + '%)' }],
+                'in': [{ opacity: 0, transform: 'translateY(' + 6 * s + '%)' }, { opacity: 1, transform: 'translateY(0)' }],
+            };
+        },
+        zoom: function (dir) {
+            var back = dir === 'back';
+            return {
+                out: [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(' + (back ? 0.92 : 1.08) + ')' }],
+                'in': [{ opacity: 0, transform: 'scale(' + (back ? 1.08 : 0.92) + ')' }, { opacity: 1, transform: 'scale(1)' }],
+            };
+        },
+        wipe: function (dir) {
+            var from = dir === 'back' ? 'inset(0 0 0 100%)' : 'inset(0 100% 0 0)';
+            return {
+                out: [{ opacity: 1 }, { opacity: 0 }],
+                'in': [{ clipPath: from }, { clipPath: 'inset(0 0 0 0)' }],
+            };
+        },
+    };
+
+    function transitionFor(layout) {
+        var t = layout.Transition;
+        var style = t && TRANSITIONS[t.Style] ? t.Style : 'none';
+        var ms = t && typeof t.DurationMs === 'number' ? t.DurationMs : 300;
+        return { style: style, ms: ms };
+    }
+
+    // Take the previous screen out of play at once (no focus, no clicks, not
+    // announced), then remove it when its exit animation ends.
+    function retireScreen(screen, frames, ms) {
+        screen.classList.add('leaving');
+        screen.setAttribute('aria-hidden', 'true');
+        screen.style.pointerEvents = 'none';
+        Array.prototype.forEach.call(screen.querySelectorAll('.discMenuEntry'), function (b) {
+            b.classList.remove('discMenuEntry');
+            b.tabIndex = -1;
+            b.disabled = true;
+        });
+        var done = function () {
+            if (screen.parentNode) {
+                screen.remove();
+            }
+        };
+        if (frames && screen.animate) {
+            var anim = screen.animate(frames, { duration: ms, easing: 'ease-in', fill: 'forwards' });
+            anim.onfinish = done;
+            setTimeout(done, ms + 150); // safety: never leave a ghost screen behind
+        } else {
+            done();
+        }
+    }
+
+    // how: 'intro' (menu opening), 'forward', 'back', or omitted for no animation.
+    function renderOverlay(parentItemId, how) {
         var menuKey = menuStack[menuStack.length - 1];
         var menu = menuDoc.Menus[menuKey] || virtualMenus[menuKey];
         if (!menu) {
@@ -954,10 +1365,13 @@
         var existing = document.getElementById(OVERLAY_ID);
         var overlay = existing || document.createElement('div');
         overlay.id = OVERLAY_ID;
-        overlay.innerHTML = '';
+
+        // Whatever is still animating out from a previous change goes now; the
+        // screen currently showing becomes the one we transition away from.
+        Array.prototype.forEach.call(overlay.querySelectorAll('.discMenusScreen.leaving'), function (s) { s.remove(); });
+        var previous = existing ? overlay.querySelector('.discMenusScreen') : null;
 
         var theme = menu.Theme || menuDoc.Theme || {};
-        var accent = theme.Accent || '#3ddc84';
         var align = theme.Align || 'left';
         var alignItems = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
         var background = menu.Background || menuDoc.Background;
@@ -967,29 +1381,82 @@
         // The server guarantees all-or-none (and flow menus have no hand positions),
         // so one check is enough.
         var positioned = shown.length > 0 && shown.every(function (e) { return !!e.Position; });
+        var transition = transitionFor(layout);
+        var animate = transition.style !== 'none' && transition.ms > 0 && !prefersReducedMotion() &&
+            typeof overlay.animate === 'function';
 
-        overlay.style.cssText =
-            'position:fixed;inset:0;z-index:9999;color:#fff;overflow:hidden;' +
+        var bgCss = backgroundStyle(background, parentItemId);
+        var previousBg = overlay.getAttribute('data-bg');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;color:#fff;overflow:hidden;' + bgCss;
+        overlay.setAttribute('data-bg', bgCss);
+        // Pages can have different backgrounds. The overlay already shows the new
+        // one, so lay the old picture over it and fade that away: a crossfade.
+        if (existing) {
+            // A fade still in flight is stale now; drop it before starting another.
+            Array.prototype.forEach.call(overlay.querySelectorAll('.discMenusBgFade'), function (g) { g.remove(); });
+        }
+
+        if (existing && previousBg && previousBg !== bgCss && animate) {
+            var ghost = document.createElement('div');
+            ghost.className = 'discMenusBgFade';
+            ghost.setAttribute('aria-hidden', 'true');
+            ghost.style.cssText = 'position:absolute;inset:0;pointer-events:none;' + previousBg;
+            overlay.insertBefore(ghost, overlay.firstChild);
+            var fading = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: transition.ms, easing: 'ease-in', fill: 'forwards' });
+            var dropGhost = function () { if (ghost.parentNode) { ghost.remove(); } };
+            fading.onfinish = dropGhost;
+            setTimeout(dropGhost, transition.ms + 150);
+        }
+
+        syncVideo(background);
+        var audio = audioConfigFor(menu);
+        currentSounds = audio.Sounds;
+        syncMusic(audio.Music);
+
+        if (!existing) {
+            var closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.textContent = '✕';
+            closeBtn.setAttribute('aria-label', 'Close disc menu');
+            closeBtn.style.cssText =
+                'position:absolute;top:1.5em;right:1.5em;background:none;border:none;color:#fff;' +
+                'font-size:1.5em;cursor:pointer;line-height:1;z-index:1;';
+            closeBtn.tabIndex = -1;
+            closeBtn.addEventListener('click', closeOverlay);
+            overlay.appendChild(closeBtn);
+        }
+
+        // Layers (e.g. a banner) are shared by menus that declare the same
+        // ones, so they only change - and fade - when the set actually differs.
+        var layersKey = JSON.stringify(layout.Layers || []);
+        if (!existing || overlay.getAttribute('data-layers') !== layersKey) {
+            var oldLayers = overlay.querySelector('.discMenusLayers');
+            if (oldLayers) {
+                oldLayers.remove();
+            }
+
+            var layersEl = document.createElement('div');
+            layersEl.className = 'discMenusLayers';
+            layersEl.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+            (layout.Layers || []).forEach(function (layer) {
+                renderLayer(layer, layersEl);
+            });
+            overlay.insertBefore(layersEl, overlay.querySelector('.discMenusScreen'));
+            overlay.setAttribute('data-layers', layersKey);
+            if (animate && existing && layersEl.animate) {
+                layersEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: transition.ms, easing: 'ease-out' });
+            }
+        }
+
+        // Everything that belongs to one menu screen lives in one element so it
+        // can be animated in and out as a unit.
+        var screen = document.createElement('div');
+        screen.className = 'discMenusScreen';
+        screen.style.cssText =
+            'position:absolute;inset:0;' +
             (positioned
                 ? ''
-                : 'display:flex;flex-direction:column;justify-content:center;align-items:' + alignItems + ';padding:4em;') +
-            backgroundStyle(background, parentItemId);
-        syncVideo(background);
-
-        var closeBtn = document.createElement('button');
-        closeBtn.type = 'button';
-        closeBtn.textContent = '✕';
-        closeBtn.setAttribute('aria-label', 'Close disc menu');
-        closeBtn.style.cssText =
-            'position:absolute;top:1.5em;right:1.5em;background:none;border:none;color:#fff;' +
-            'font-size:1.5em;cursor:pointer;line-height:1;z-index:1;';
-        closeBtn.tabIndex = -1;
-        closeBtn.addEventListener('click', closeOverlay);
-        overlay.appendChild(closeBtn);
-
-        (layout.Layers || []).forEach(function (layer) {
-            renderLayer(layer, overlay);
-        });
+                : 'display:flex;flex-direction:column;justify-content:center;align-items:' + alignItems + ';padding:4em;');
 
         if (!layout.HideTitle) {
             var title = document.createElement('h1');
@@ -1005,10 +1472,10 @@
                 place(title, layout.TitlePosition);
             }
 
-            overlay.appendChild(title);
+            screen.appendChild(title);
         }
 
-        var list = positioned ? overlay : document.createElement('div');
+        var list = positioned ? screen : document.createElement('div');
         if (!positioned) {
             list.style.cssText = 'display:flex;flex-direction:column;gap:0.5em;';
         }
@@ -1035,20 +1502,24 @@
                 lastMouse.y = e.screenY;
                 if (document.activeElement !== btn) {
                     btn.focus();
+                    playSound('move');
                 }
             });
             btn.addEventListener('click', function () {
                 // Remember what was activated even where clicking doesn't focus a
                 // button (Safari, touch), so Back returns to it.
                 lastFocusIndex[menuKey] = entryIndex;
+                playSound(soundKindFor(entry));
                 handleEntry(entry, parentItemId);
             });
             list.appendChild(btn);
         });
 
         if (!positioned) {
-            overlay.appendChild(list);
+            screen.appendChild(list);
         }
+
+        overlay.appendChild(screen);
 
         if (!existing) {
             document.body.appendChild(overlay);
@@ -1058,9 +1529,20 @@
             }
         }
 
+        if (previous) {
+            // Crossfade-style: the old screen exits while the new one enters.
+            var frames = animate && how && how !== 'intro' ? TRANSITIONS[transition.style](how) : null;
+            retireScreen(previous, frames ? frames.out : null, transition.ms);
+            if (frames) {
+                screen.animate(frames['in'], { duration: transition.ms, easing: 'ease-out' });
+            }
+        } else if (animate && how === 'intro') {
+            screen.animate(TRANSITIONS[transition.style]('forward')['in'], { duration: transition.ms, easing: 'ease-out' });
+        }
+
         // Like a disc remembering its highlighted button: returning to a menu
         // lands on the entry you left it from (e.g. 'Special Features' after Back).
-        var entryEls = list.querySelectorAll('.discMenuEntry');
+        var entryEls = screen.querySelectorAll('.discMenuEntry');
         var remembered = entryEls[lastFocusIndex[menuKey]] || entryEls[0];
         if (remembered) {
             remembered.focus();
@@ -1133,7 +1615,7 @@
                         window.location.hash = '#/details?id=' + parentItemId;
                         setTimeout(function () {
                             menuStack = savedStack;
-                            renderOverlay(parentItemId);
+                            renderOverlay(parentItemId, 'intro');
                         }, 600);
                     }
                 }
@@ -1211,7 +1693,7 @@
         menuStack.push(key);
         menuPage[key] = 0;
         delete lastFocusIndex[key];
-        renderOverlay(parentItemId);
+        renderOverlay(parentItemId, 'forward');
     }
 
     function startTicksForChapter(number) {
@@ -1249,7 +1731,7 @@
                     menuStack.push(entry.Menu);
                     menuPage[entry.Menu] = 0;
                     delete lastFocusIndex[entry.Menu];
-                    renderOverlay(parentItemId);
+                    renderOverlay(parentItemId, 'forward');
                 }
 
                 break;
@@ -1261,14 +1743,14 @@
                 // its remembered highlight, so Home lands on the button you left it from.
                 menuStack = [menuDoc.Root];
                 menuPage = {};
-                renderOverlay(parentItemId);
+                renderOverlay(parentItemId, 'back');
                 break;
             case 'pageNext':
             case 'pagePrev':
                 var pageKey = menuStack[menuStack.length - 1];
                 menuPage[pageKey] = (menuPage[pageKey] || 0) + (entry.Action === 'pageNext' ? 1 : -1);
                 lastFocusIndex[pageKey] = 0;
-                renderOverlay(parentItemId);
+                renderOverlay(parentItemId, entry.Action === 'pageNext' ? 'forward' : 'back');
                 break;
             case 'chapters':
                 openSceneSelection(entry, parentItemId);

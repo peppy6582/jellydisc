@@ -22,6 +22,9 @@ public sealed class MenuDocument
 
     public ThemeSpec? Theme { get; init; }
 
+    /// <summary>Default music and button sounds; a menu's own audio overrides it per part.</summary>
+    public AudioSpec? Audio { get; init; }
+
     /// <summary>Default layout every menu inherits, overridden field by field by a menu's own layout.</summary>
     public MenuLayout? Layout { get; init; }
 
@@ -131,6 +134,9 @@ public sealed class BackgroundSpec
 
     public string? TmdbFilePath { get; init; }
 
+    /// <summary>For source=tmdb: w780, w1280 (default) or original.</summary>
+    public string? TmdbSize { get; init; }
+
     public string? FanartId { get; init; }
 
     public string? Color { get; init; }
@@ -219,6 +225,8 @@ public sealed class MenuDef
 
     public MenuLayout? Layout { get; init; }
 
+    public AudioSpec? Audio { get; init; }
+
     public required List<MenuEntry> Entries { get; init; }
 }
 
@@ -247,7 +255,48 @@ public sealed class MenuLayout
 
     public FlowSpec? Flow { get; init; }
 
+    public TransitionSpec? Transition { get; init; }
+
     public List<LayerSpec>? Layers { get; init; }
+}
+
+/// <summary>Animation between menus/pages: none, fade, slide, rise, zoom or wipe.</summary>
+public sealed class TransitionSpec
+{
+    public required string Style { get; init; }
+
+    public int? DurationMs { get; init; }
+}
+
+public sealed class AudioSpec
+{
+    public MusicSpec? Music { get; init; }
+
+    public SoundsSpec? Sounds { get; init; }
+}
+
+/// <summary>Background music: a file (asset:/https), the item's Jellyfin theme song, or none.</summary>
+public sealed class MusicSpec
+{
+    public required string Source { get; init; }
+
+    public string? File { get; init; }
+
+    public double? Volume { get; init; }
+}
+
+/// <summary>Button sounds: a built-in preset and/or per-sound audio files.</summary>
+public sealed class SoundsSpec
+{
+    public string? Preset { get; init; }
+
+    public double? Volume { get; init; }
+
+    public string? Move { get; init; }
+
+    public string? Select { get; init; }
+
+    public string? Back { get; init; }
 }
 
 /// <summary>Automatic grid placement with paging (More / Previous).</summary>

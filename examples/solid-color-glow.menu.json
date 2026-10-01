@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "menuId": "251e2e8b-7098-41c0-b5d4-046b79225798",
-  "revision": 1,
+  "revision": 2,
   "meta": {
     "author": "example",
     "language": "en-US",
-    "notes": "EXAMPLE 2 - solid colour background, hand-placed centred buttons, serif text with a glow highlight, and three menu levels so you can see both 'back' (up one level) and 'home' (straight to the main menu). No images at all. Extras are illustrative."
+    "notes": "EXAMPLE 2 - solid colour background, hand-placed centred buttons, serif text with a glow highlight, and three menu levels so you can see both 'back' (up one level) and 'home' (straight to the main menu). No images at all. Extras are illustrative. Also: slide transitions and chime sounds."
   },
   "match": { "itemType": "Movie", "providerIds": {"Tmdb": "129", "Imdb": "tt0245429"}, "release": {"edition": "Example", "format": "DVD", "region": "1", "year": 2003} },
   "background": { "source": "color", "color": "#0b132b" },
@@ -19,7 +19,7 @@
     "uppercase": true,
     "letterSpacing": 0.12
   },
-  "layout": { "buttonStyle": "glow", "titlePosition": {"x": 50, "y": 14, "anchor": "top"} },
+  "layout": { "buttonStyle": "glow", "titlePosition": {"x": 50, "y": 14, "anchor": "top"}, "transition": {"style": "slide", "durationMs": 350} },
   "extras": {
     "making-of": { "type": "Featurette", "durationSec": 1800 },
     "director-interview": { "type": "Interview", "durationSec": 720 },
@@ -55,5 +55,6 @@
         { "action": "home", "label": "Main Menu", "position": {"x": 65, "y": 78, "anchor": "center"} }
       ]
     }
-  }
+  },
+  "audio": { "sounds": {"preset": "chime", "volume": 0.35} }
 }

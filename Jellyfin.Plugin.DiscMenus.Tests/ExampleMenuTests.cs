@@ -47,6 +47,14 @@ public class ExampleMenuTests
         Assert.Contains(BackgroundSource.Image, sources);
         Assert.Contains(docs, d => d.Menus.Values.Any(m => (m.Layout?.Flow ?? d.Layout?.Flow) is not null));
         Assert.Contains(docs, d => d.Menus.Values.SelectMany(m => m.Entries).Any(e => e is HomeEntry));
+        Assert.Contains(docs, d => d.Audio?.Music?.Source == "file");
+        Assert.Contains(docs, d => d.Audio?.Music?.Source == "themeSong");
+        Assert.Contains(docs, d => d.Audio?.Sounds?.Preset is not null);
+        foreach (var style in new[] { "fade", "slide", "zoom", "wipe" })
+        {
+            Assert.Contains(docs, d => d.Layout?.Transition?.Style == style);
+        }
+
         Assert.Equal(docs.Count, docs.Select(d => d.MenuId).Distinct().Count());
     }
 
@@ -54,7 +62,7 @@ public class ExampleMenuTests
     public void BundledAssetsReferencedByExamplesExist()
     {
         var assets = Path.Combine(ExamplesDir(), "assets");
-        foreach (var name in new[] { "local-art/background.webp", "local-art/banner.webp" })
+        foreach (var name in new[] { "local-art/background.webp", "local-art/banner.webp", "local-art/ambient.wav" })
         {
             Assert.True(File.Exists(Path.Combine(assets, name)), name + " should be bundled with the examples");
         }

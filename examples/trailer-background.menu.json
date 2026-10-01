@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "menuId": "0e97d452-f45b-4be7-95db-7620ecc3662a",
-  "revision": 1,
+  "revision": 2,
   "meta": {
     "author": "example",
     "language": "en-US",
-    "notes": "EXAMPLE 3 - trailer video background. The title's own trailer (local file first, then the YouTube trailers Jellyfin has stored) loops muted behind a translucent bar; the bar holds the buttons. Special Features uses an automatic grid that pages with More/Previous, with Home pinned on every page. Add a 'poster' (https URL or asset: image) to background to show a picture until the video starts. Extras are illustrative."
+    "notes": "EXAMPLE 3 - trailer video background. The title's own trailer (local file first, then YouTube trailers stored in Jellyfin) loops muted behind a translucent bar holding the buttons. Special Features is an automatic grid that pages with More/Previous, Home pinned. Also: wipe transitions, beep sounds, and the item's Jellyfin theme song as music (silent if it has none). Add a 'poster' to background to show a picture until the video starts. Extras are illustrative."
   },
   "match": { "itemType": "Movie", "providerIds": {"Tmdb": "335984", "Imdb": "tt1856101"}, "release": {"edition": "Example", "format": "UHD", "region": "A", "year": 2018} },
   "background": { "source": "trailer", "trailerIndex": 0, "muted": true, "dim": 0.35 },
@@ -33,7 +33,8 @@
         "borderWidth": 0.2,
         "radius": 0.8
       }
-    ]
+    ],
+    "transition": { "style": "wipe", "durationMs": 400 }
   },
   "extras": {
     "making-of": { "type": "BehindTheScenes", "durationSec": 1620 },
@@ -70,5 +71,6 @@
         { "action": "home", "label": "Home" }
       ]
     }
-  }
+  },
+  "audio": { "music": {"source": "themeSong", "volume": 0.4}, "sounds": {"preset": "beep", "volume": 0.4} }
 }

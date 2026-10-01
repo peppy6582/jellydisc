@@ -101,6 +101,21 @@ keep working unchanged.
   (typically `home`/`back`) stay pinned. Use `"layers": []` in that menu's layout to switch off an
   inherited banner for the screen. A `playFeature` entry can also set `startChapter` (1-based).
 
+- **Music and button sounds (`audio`, opt-in):** a top-level `audio` is the default for every menu; a menu's
+  own `audio` replaces it per part (its `music` replaces the default music, its `sounds` the default
+  sounds). `music` is `{ "source": "file", "file": "asset:folder/track.mp3", "volume": 0.5 }`, or
+  `{ "source": "themeSong" }` for the item's own Jellyfin theme song (silent if it has none), or
+  `{ "source": "none" }` to silence a menu. A file is an `https://` URL or an `asset:` reference ending in
+  `.mp3 .ogg .opus .m4a .wav`. Music loops with fades and keeps playing across menus that name the same
+  track; a different track crossfades. `sounds` is `{ "preset": "click|chime|beep|none", "volume": 0.5,
+  "move"?, "select"?, "back"? }`: the presets are synthesised in the browser (no files needed) and any of
+  move/select/back can be replaced by an audio file. Everything stops when the menu closes or playback
+  starts. Browsers only allow audio after a click, which the viewer's click on "Disc Menu" provides.
+- **Transitions (`layout.transition`):** `{ "style": "none|fade|slide|rise|zoom|wipe", "durationMs": 300 }`.
+  Going into a submenu or the next page animates forward and Back/Previous animates the other way. Only
+  the buttons and title animate: the background, a trailer video and any layers (e.g. a banner) shared by
+  both menus stay put. Honours the viewer's reduced-motion setting.
+
 **Shareable means no binaries and no code.** Images are never embedded files or paths: an `image` is
 an `https://` URL or a small `data:image/(png|jpeg|webp);base64,` URI (SVG is refused). URLs may not
 contain whitespace, quotes, parentheses or angle brackets. The server and the browser both re-check this,
@@ -110,6 +125,44 @@ parent item's own Jellyfin images (`background.source: "jellyfin"`).
 
 Not yet implemented: free-floating decorative images/text layers, background video, menu music,
 transition animations, and scene-selection chapter grids (see the roadmap in the project notes).
+
+## Automatic discovery
+
+Drop a `*.menu.json` into the menus folder and the plugin does the rest:
+
+- **Finds the title** by the menu's `match` provider ids (TMDB / IMDB / TVDB), through Jellyfin's own
+  provider-id lookup. Never by file name or path. An item counts if at least one id matches and none
+  contradicts (an item with a different TMDB id is a different title even if an IMDB id coincides);
+  matching more ids wins; two equally good items are **ambiguous** and nothing is chosen. A season menu
+  matches its series by id and then the season number.
+- **Links the extras** by type and duration (the existing matcher), without needing a signed-in user.
+  Only extras that aren't already matched, manual or ignored are touched, and files are only written
+  when something changes.
+- **Keeps its own bindings** in the plugin's data folder (`bindings/<menuId>.binding.json`), so the
+  shareable menu files stay untouched. A `<name>.binding.json` written by hand next to a menu always
+  takes priority and is never modified automatically.
+- **Stays current:** the index is cached and rebuilt when a menu/binding file changes, or (throttled to
+  once per five seconds) after the library changes, so a title or extra added later gets linked on its
+  own, and a corrected ID re-binds. If two menus claim one title, a hand-written binding wins, then the
+  newer revision, then file order; the other is reported as "not used".
+- **Shows its work:** `GET /DiscMenus/Status` (admin) and the **Menu Files** table on the plugin's
+  dashboard page list every menu file as bound, waiting for its title, needs review, not used, or can't
+  be loaded; `POST /DiscMenus/Scan` and the **Scan now** button force a re-check.
+
+**Drafting a menu for a title** (admin API): `GET /DiscMenus/Draft/{itemId}` previews a starter menu built from
+what the library has for a movie: its TMDB/IMDB ids, its real local extras with their types and
+durations, and a Scene Selection entry if it has chapters. Extras are listed flat when there are up to
+eight, otherwise grouped by type (Featurettes, Shorts, ...) with a Play All; a type with one extra is a
+direct entry. Labels come from the files' own names with rip clutter removed ("Featurette - title 083"
+becomes "Featurette 1 (5:10)" so the files can be told apart). `POST /DiscMenus/Draft/{itemId}` writes it
+into the menus folder as `<title>-<year>.menu.json`, where discovery binds it and matches the extras
+straight away. It never overwrites a file and refuses a title that already has a menu unless
+`force=true`; every draft passes the same validation as a hand-written menu before it is returned. A
+draft is a starting point: edit the labels and design, and don't share it as-is (its labels are your
+rip's, not the disc's).
+
+Not yet: telling apart several copies of the same title (e.g. a 4K and a 1080p file as separate items)
+beyond reporting them as ambiguous; scoring by edition/format is the planned next step.
 
 ## Matching
 Extras are matched by `type` (Jellyfin ExtraType) + `durationSec` (± `toleranceSec`),

@@ -21,6 +21,32 @@
                     </button>
                 </form>
 
+                <h2>Menu Files</h2>
+                <p class="fieldDescription">
+                    Every "*.menu.json" in the menus directory and how it was linked to your library.
+                    A menu is matched to a title automatically by its TMDB / IMDB / TVDB ids (never by
+                    file name), and its extras are matched by type and duration. A "*.binding.json"
+                    written by hand next to a menu always takes priority ("manual"). The plugin keeps
+                    the bindings it creates itself in its own data folder ("auto"). The library is
+                    re-checked when files or the library change; "Scan now" forces it.
+                </p>
+                <button id="MenuScanButton" is="emby-button" type="button" class="raised">
+                    <span>Scan now</span>
+                </button>
+                <table class="detailTable">
+                    <thead>
+                        <tr>
+                            <th class="detailTableHeaderCell">Menu file</th>
+                            <th class="detailTableHeaderCell">Status</th>
+                            <th class="detailTableHeaderCell">Title</th>
+                            <th class="detailTableHeaderCell">Linked item</th>
+                            <th class="detailTableHeaderCell">Extras</th>
+                            <th class="detailTableHeaderCell">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="MenuStatusTableBody"></tbody>
+                </table>
+
                 <h2>Bound Menus</h2>
                 <p class="fieldDescription">
                     Every "*.binding.json" found under the menus directory, with its paired menu.
@@ -88,7 +114,65 @@
                 return tr;
             }
 
+            var STATE_LABELS = {
+                bound: 'Bound',
+                pending: 'Waiting for the title',
+                ambiguous: 'Needs review',
+                conflict: 'Not used (another menu wins)',
+                invalid: 'Can\'t be loaded'
+            };
+
+            function renderStatusRow(status) {
+                var tr = document.createElement('tr');
+                var label = STATE_LABELS[status.State] || status.State;
+                var source = status.Source ? ' (' + escapeHtml(status.Source) + ')' : '';
+                var titleText = escapeHtml(status.Title || '') + (status.Edition ? ' &middot; ' + escapeHtml(status.Edition) : '');
+                var extras = status.ExtrasTotal == null ? '' : escapeHtml(status.ExtrasMatched) + ' of ' + escapeHtml(status.ExtrasTotal) + ' linked';
+                var notes = escapeHtml(status.Message || '');
+                if (status.Candidates && status.Candidates.length) {
+                    notes += '<br />Candidates: ' + status.Candidates.map(function (c) {
+                        return escapeHtml(c.Name || c.Id) + (c.Year ? ' (' + escapeHtml(c.Year) + ')' : '') + ' [' + escapeHtml(String(c.Id).substring(0, 8)) + ']';
+                    }).join('; ');
+                }
+
+                tr.innerHTML =
+                    '<td class="detailTableBodyCell">' + escapeHtml(status.MenuFile) + '</td>' +
+                    '<td class="detailTableBodyCell"><strong>' + escapeHtml(label) + '</strong>' + source + '</td>' +
+                    '<td class="detailTableBodyCell">' + titleText + '</td>' +
+                    '<td class="detailTableBodyCell">' + escapeHtml(status.ItemName || '') + '</td>' +
+                    '<td class="detailTableBodyCell">' + extras + '</td>' +
+                    '<td class="detailTableBodyCell">' + notes + '</td>';
+                return tr;
+            }
+
+            function showStatuses(page, statuses) {
+                var body = page.querySelector('#MenuStatusTableBody');
+                body.innerHTML = '';
+                (statuses || []).forEach(function (status) {
+                    body.appendChild(renderStatusRow(status));
+                });
+            }
+
+            function loadStatuses(page) {
+                ApiClient.getJSON(ApiClient.getUrl('DiscMenus/Status')).then(function (statuses) {
+                    showStatuses(page, statuses);
+                });
+            }
+
+            function scanNow(page) {
+                Dashboard.showLoadingMsg();
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('DiscMenus/Scan'), dataType: 'json' }).then(function (statuses) {
+                    Dashboard.hideLoadingMsg();
+                    showStatuses(page, statuses);
+                    loadMenus(page);
+                }, function () {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert('Scan failed. See the server log.');
+                });
+            }
+
             function loadMenus(page) {
+                loadStatuses(page);
                 ApiClient.getJSON(ApiClient.getUrl('DiscMenus')).then(function (items) {
                     var body = page.querySelector('#MenusTableBody');
                     body.innerHTML = '';
@@ -239,6 +323,10 @@
                 if (detailsButton) {
                     toggleDetail(page, detailsButton, detailsButton.getAttribute('data-details'));
                 }
+            });
+
+            document.querySelector('#MenuScanButton').addEventListener('click', function () {
+                scanNow(document.querySelector('#DiscMenusConfigPage'));
             });
 
             document.querySelector('#DiscMenusConfigForm').addEventListener('submit', function (e) {

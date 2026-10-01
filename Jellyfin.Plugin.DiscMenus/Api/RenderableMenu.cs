@@ -20,6 +20,11 @@ public sealed class RenderableMenuDocument
 
     public MenuLayout? Layout { get; init; }
 
+    public AudioSpec? Audio { get; init; }
+
+    /// <summary>The item's Jellyfin theme-song item ids; only filled when a menu uses music source=themeSong.</summary>
+    public List<Guid>? ThemeSongs { get; init; }
+
     /// <summary>
     /// This item's trailers, local files first then YouTube. Only filled when a background
     /// uses source=trailer; a background's trailerIndex indexes into this list.
@@ -74,6 +79,8 @@ public sealed class RenderableMenu
     public ThemeSpec? Theme { get; init; }
 
     public MenuLayout? Layout { get; init; }
+
+    public AudioSpec? Audio { get; init; }
 
     public required List<RenderableEntry> Entries { get; init; }
 }

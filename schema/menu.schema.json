@@ -22,6 +22,10 @@
     "match": { "$ref": "#/$defs/match" },
     "background": { "$ref": "#/$defs/background" },
     "theme": { "$ref": "#/$defs/theme" },
+    "audio": {
+      "description": "Default music and button sounds for every menu. A menu's own audio overrides it per part (its music replaces the default music, its sounds replace the default sounds). Nothing plays unless this is set.",
+      "$ref": "#/$defs/audio"
+    },
     "layout": {
       "description": "Default layout for every menu. A menu's own layout overrides it field by field, so submenus can share the main menu's banner and style without repeating it.",
       "$ref": "#/$defs/menuLayout"
@@ -98,6 +102,7 @@
         "hideTitle": { "type": "boolean" },
         "buttonStyle": { "description": "Default for entries that don't set their own style.", "$ref": "#/$defs/buttonStyle" },
         "flow": { "$ref": "#/$defs/flow" },
+        "transition": { "$ref": "#/$defs/transition" },
         "layers": {
           "description": "Decorative shapes and images drawn behind the buttons, in order (later layers on top). They are not focusable.",
           "type": "array",
@@ -108,6 +113,59 @@
     },
 
     "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+
+    "volume": { "type": "number", "minimum": 0, "maximum": 1 },
+
+    "audioRef": {
+      "description": "An audio file: an https URL, or asset:<folder>/<file>.<ext> naming a file (mp3, ogg, opus, m4a or wav) in the server's menu assets folder.",
+      "type": "string",
+      "maxLength": 2000,
+      "pattern": "^(https://[^\\s\"'()<>\\\\]+|asset:[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,3}\\.(mp3|ogg|opus|m4a|wav))$"
+    },
+
+    "transition": {
+      "description": "Animation when moving between menus or pages. The background (including trailer video) and any layers shared by both screens stay put; the buttons and title animate. Ignored for viewers who prefer reduced motion.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style"],
+      "properties": {
+        "style": { "enum": ["none", "fade", "slide", "rise", "zoom", "wipe"] },
+        "durationMs": { "description": "Default 300.", "type": "integer", "minimum": 0, "maximum": 2000 }
+      }
+    },
+
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "music": {
+          "description": "Background music, looped with fades. It keeps playing across menus that name the same track. source 'none' silences it for a menu.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": { "enum": ["file", "themeSong", "none"] },
+            "file": { "description": "For source=file.", "$ref": "#/$defs/audioRef" },
+            "volume": { "description": "Default 0.5.", "$ref": "#/$defs/volume" }
+          },
+          "allOf": [
+            { "if": { "properties": { "source": { "const": "file" } } }, "then": { "required": ["file"] } }
+          ]
+        },
+        "sounds": {
+          "description": "Button sounds. 'preset' picks built-in synthesized sounds (no files needed); move/select/back can each be replaced by an audio file.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "preset": { "enum": ["none", "click", "chime", "beep"] },
+            "volume": { "description": "Default 0.5.", "$ref": "#/$defs/volume" },
+            "move": { "description": "Played when the highlight moves.", "$ref": "#/$defs/audioRef" },
+            "select": { "description": "Played when a button is activated.", "$ref": "#/$defs/audioRef" },
+            "back": { "description": "Played when going back or home.", "$ref": "#/$defs/audioRef" }
+          }
+        }
+      }
+    },
 
     "flow": {
       "description": "Automatic grid placement with paging. Entries that have no position of their own are laid out left-to-right, top-to-bottom inside the region. If they don't all fit, the renderer adds a More button (and Previous on later pages); 'back' entries stay on every page. A menu using flow must not also give entries positions.",
@@ -250,9 +308,13 @@
           "minimum": 0
         },
         "tmdbFilePath": {
-          "description": "For source=tmdb: the TMDB file_path, e.g. /abc123.jpg.",
+          "description": "For source=tmdb: the TMDB file_path of a backdrop, e.g. /abc123.jpg. Jellyfin's TheMovieDb provider lists them: GET /Items/{id}/RemoteImages?type=Backdrop&providerName=TheMovieDb.",
           "type": "string",
-          "pattern": "^/[A-Za-z0-9_-]+\\.(jpg|png|svg)$"
+          "pattern": "^/[A-Za-z0-9_-]+\\.(jpg|png)$"
+        },
+        "tmdbSize": {
+          "description": "For source=tmdb: image size to fetch from TMDB's image server (default w1280). 'original' can be several megabytes.",
+          "enum": ["w780", "w1280", "original"]
         },
         "fanartId": {
           "description": "For source=fanart: fanart.tv image id.",
@@ -346,6 +408,7 @@
         "background": { "$ref": "#/$defs/background" },
         "theme": { "$ref": "#/$defs/theme" },
         "layout": { "$ref": "#/$defs/menuLayout" },
+        "audio": { "$ref": "#/$defs/audio" },
         "entries": {
           "type": "array",
           "minItems": 1,

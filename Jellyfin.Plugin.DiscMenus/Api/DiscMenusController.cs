@@ -31,6 +31,43 @@ public sealed class DiscMenusController : ControllerBase
         userId is { } id ? _userManager.GetUserById(id) : _userManager.GetFirstUser();
 
     /// <summary>Every bound menu found under the configured menus directory, with match counts.</summary>
+    /// <summary>
+    /// Where every menu file stands in automatic discovery: bound to which title, still waiting for
+    /// one, ambiguous, in conflict with another menu, or invalid.
+    /// </summary>
+    [HttpGet("Status")]
+    public ActionResult<IReadOnlyList<MenuStatus>> GetStatus() => Ok(_discMenuService.GetStatuses());
+
+    /// <summary>
+    /// A starter menu for a movie, built from what the library has for it (ids, extras with types and
+    /// durations, chapters). Preview only: nothing is written.
+    /// </summary>
+    [HttpGet("Draft/{itemId}")]
+    public ActionResult GetDraft([FromRoute] Guid itemId)
+    {
+        var outcome = _discMenuService.BuildDraft(itemId);
+        return outcome.Draft is null
+            ? StatusCode(outcome.StatusCode, outcome.Error)
+            : Content(outcome.Draft.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), "application/json");
+    }
+
+    /// <summary>
+    /// Builds that draft and writes it into the menus folder, where automatic discovery binds it to
+    /// the title. Never overwrites a file; refuses a title that already has a menu unless force=true.
+    /// </summary>
+    [HttpPost("Draft/{itemId}")]
+    public ActionResult CreateDraft([FromRoute] Guid itemId, [FromQuery] bool force = false)
+    {
+        var outcome = _discMenuService.WriteDraft(itemId, force);
+        return outcome.Draft is null
+            ? StatusCode(outcome.StatusCode, outcome.Error)
+            : Ok(new { File = outcome.FileName, Statuses = _discMenuService.Rescan() });
+    }
+
+    /// <summary>Re-reads the menus folder and the library right now, then returns the statuses.</summary>
+    [HttpPost("Scan")]
+    public ActionResult<IReadOnlyList<MenuStatus>> Scan() => Ok(_discMenuService.Rescan());
+
     [HttpGet]
     public ActionResult<IReadOnlyList<MenuBindingSummary>> ListBindings()
     {
@@ -197,12 +234,17 @@ public sealed class DiscMenusController : ControllerBase
         [".png"] = "image/png",
         [".jpg"] = "image/jpeg",
         [".jpeg"] = "image/jpeg",
+        [".mp3"] = "audio/mpeg",
+        [".ogg"] = "audio/ogg",
+        [".opus"] = "audio/ogg",
+        [".m4a"] = "audio/mp4",
+        [".wav"] = "audio/wav",
     };
 
     /// <summary>
-    /// Serves a menu's own art (an "asset:" image reference) from the assets folder.
+    /// Serves a menu's own art and audio (an "asset:" reference) from the assets folder.
     /// Anonymous because an img/CSS fetch cannot carry Jellyfin's auth header. Only raster
-    /// image files inside the assets folder are ever served; any path that escapes it, or
+    /// image and audio files inside the assets folder are ever served; any path that escapes it, or
     /// isn't an existing image file, is a 404.
     /// </summary>
     [HttpGet("Assets/{**path}")]
@@ -219,7 +261,8 @@ public sealed class DiscMenusController : ControllerBase
         }
 
         Response.Headers.CacheControl = "no-cache";
-        return PhysicalFile(full, contentType, new FileInfo(full).LastWriteTimeUtc, null);
+        // Range support: browsers need it to seek and loop audio/video.
+        return PhysicalFile(full, contentType, new FileInfo(full).LastWriteTimeUtc, null, enableRangeProcessing: true);
     }
 
     /// <summary>The web menu renderer script injected into jellyfin-web by <see cref="TransformIndexHtml"/>.</summary>

@@ -45,6 +45,7 @@ public sealed class DiscMenusPlayerController : ControllerBase
                 Background = kv.Value.Background,
                 Theme = kv.Value.Theme,
                 Layout = kv.Value.Layout,
+                Audio = kv.Value.Audio,
                 Entries = kv.Value.Entries.Select(e => ToRenderableEntry(e, binding)).ToList(),
             });
 
@@ -55,11 +56,17 @@ public sealed class DiscMenusPlayerController : ControllerBase
             Background = menu.Background,
             Theme = menu.Theme,
             Layout = menu.Layout,
+            Audio = menu.Audio,
+            ThemeSongs = UsesThemeSong(menu) ? _discMenuService.GetThemeSongs(parentItemId).ToList() : null,
             Trailers = UsesTrailer(menu) ? _discMenuService.GetTrailers(parentItemId).ToList() : null,
             Chapters = UsesChapters(menu) ? _discMenuService.GetChapters(parentItemId).ToList() : null,
             Menus = menus,
         });
     }
+
+    private static bool UsesThemeSong(MenuDocument menu) =>
+        menu.Audio?.Music?.Source == "themeSong"
+        || menu.Menus.Values.Any(m => m.Audio?.Music?.Source == "themeSong");
 
     private static bool UsesChapters(MenuDocument menu) =>
         menu.Menus.Values.SelectMany(m => m.Entries).Any(e => e is ChaptersEntry || e is PlayFeatureEntry { StartChapter: not null });
