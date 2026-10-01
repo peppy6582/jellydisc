@@ -528,3 +528,26 @@ requests have no associated user, so any endpoint needing one (ours accept an ex
    are far thinner than assumed (4 variables, no color palette) — so theming comes from the
    menu's own `theme.json` instead.
 4. Sharing via a GitHub-backed JSON repo keyed by TMDB ID + edition
+
+## License
+
+Copyright (C) 2026 Phillip Berryman.
+
+Disc Menus is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License](LICENSE) as published by the Free Software Foundation, version 3 of the
+License (GPL-3.0-only). It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+The plugin is built against Jellyfin's `Jellyfin.Controller`, `Jellyfin.Model` and `Jellyfin.Common`
+packages, which Jellyfin publishes under GPL-3.0-only, and GPL-3.0 is also what the official Jellyfin plugin
+template uses.
+
+What this licence does and doesn't cover:
+- **Covered:** the plugin's code, the JSON schemas, the validator, the example menus, and the small
+  placeholder artwork and ambient audio bundled in `examples/assets/` (all original and generated for this
+  project).
+- **Not covered, and not included:** studio artwork, music or video. The `thor-ragnarok` example refers to
+  artwork it does not ship, because that artwork belongs to the film's studio. Menus you share should
+  contain only layout and ids (see "Authoring a disc-style layout"), never someone else's art.
+- **Third-party services:** movie and series metadata and images come from TMDB through Jellyfin. This
+  product uses the TMDB API but is not endorsed or certified by TMDB.
