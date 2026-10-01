@@ -110,6 +110,7 @@
         }
 
         menuStack = [menuDoc.Root];
+        lastFocusIndex = {};
         renderOverlay(parentItemId);
     }
 
@@ -117,34 +118,181 @@
         var existing = document.getElementById(OVERLAY_ID);
         if (existing) {
             existing.remove();
-            document.removeEventListener('keydown', onKeyDown);
+            document.removeEventListener('keydown', onKeyDown, true);
+        }
+    }
+
+    // ---- Remote-style navigation -------------------------------------------
+    // Directional focus is geometric (nearest entry in the pressed direction by
+    // on-screen position), not list-order based, so it keeps working unchanged
+    // when menus get authored layouts instead of a plain column.
+
+    var DIRECTION_KEYS = {
+        ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    };
+    var SELECT_KEYS = { Enter: true, NumpadEnter: true, ' ': true };
+    // Browsers/TV remotes report "back" in many ways: webOS 461, Tizen 10009.
+    var BACK_KEYS = { Escape: true, Backspace: true, BrowserBack: true, GoBack: true };
+    var BACK_KEYCODES = { 461: true, 10009: true };
+
+    var lastFocusIndex = {};
+
+    function getEntries() {
+        var overlay = document.getElementById(OVERLAY_ID);
+        return overlay ? Array.prototype.slice.call(overlay.querySelectorAll('.discMenuEntry')) : [];
+    }
+
+    function moveFocus(dx, dy) {
+        var entries = getEntries();
+        if (entries.length === 0) {
+            return;
+        }
+
+        var current = entries.indexOf(document.activeElement);
+        if (current < 0) {
+            entries[0].focus();
+            return;
+        }
+
+        var from = entries[current].getBoundingClientRect();
+        var fx = from.left + from.width / 2;
+        var fy = from.top + from.height / 2;
+        var best = null;
+        var bestScore = Infinity;
+        var wrap = null;
+        var wrapScore = Infinity;
+
+        entries.forEach(function (el, i) {
+            if (i === current) {
+                return;
+            }
+
+            var r = el.getBoundingClientRect();
+            var vx = r.left + r.width / 2 - fx;
+            var vy = r.top + r.height / 2 - fy;
+            var along = vx * dx + vy * dy;
+            var across = Math.abs(vx * dy - vy * dx);
+            // Off-axis distance counts double so "down" prefers the entry
+            // straight below over a nearer one far off to the side.
+            var score = along + 2 * across;
+            if (along > 1) {
+                if (score < bestScore) {
+                    best = el;
+                    bestScore = score;
+                }
+            } else if (score < wrapScore) {
+                // Nothing further in this direction: wrap to the far side.
+                wrap = el;
+                wrapScore = score;
+            }
+        });
+
+        var target = best || wrap;
+        if (target) {
+            target.focus();
+        }
+    }
+
+    function goBack(parentItemId) {
+        if (menuStack.length > 1) {
+            menuStack.pop();
+            renderOverlay(parentItemId);
+        } else {
+            closeOverlay();
+        }
+    }
+
+    function selectFocused() {
+        if (document.activeElement && document.activeElement.classList.contains('discMenuEntry')) {
+            document.activeElement.click();
         }
     }
 
     function onKeyDown(e) {
-        var overlay = document.getElementById(OVERLAY_ID);
-        if (!overlay) {
+        if (!document.getElementById(OVERLAY_ID)) {
             return;
         }
 
-        if (e.key === 'Escape') {
-            closeOverlay();
+        var dir = DIRECTION_KEYS[e.key];
+        var handled = true;
+        if (dir) {
+            moveFocus(dir[0], dir[1]);
+        } else if (SELECT_KEYS[e.key]) {
+            selectFocused();
+        } else if (BACK_KEYS[e.key] || BACK_KEYCODES[e.keyCode]) {
+            goBack(currentParentItemId);
+        } else {
+            handled = false;
+        }
+
+        if (handled) {
+            // Capture phase + stop: jellyfin-web's own key handlers (Escape,
+            // Backspace, arrows) must not also act on the page behind the menu.
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }
+
+    // Gamepad: d-pad / left stick to move, A to select, B to go back. There is
+    // no gamepad "event" for buttons, so poll while the overlay is open.
+    var gamepadLoop = 0;
+    var gamepadHeld = {};
+
+    function pollGamepad() {
+        if (!document.getElementById(OVERLAY_ID)) {
+            gamepadLoop = 0;
             return;
         }
 
-        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
-            return;
+        var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        var now = Date.now();
+        var pressed = {};
+        for (var i = 0; i < pads.length; i++) {
+            var pad = pads[i];
+            if (!pad) {
+                continue;
+            }
+
+            var b = pad.buttons;
+            var ax = pad.axes[0] || 0;
+            var ay = pad.axes[1] || 0;
+            if ((b[12] && b[12].pressed) || ay < -0.6) { pressed.up = true; }
+            if ((b[13] && b[13].pressed) || ay > 0.6) { pressed.down = true; }
+            if ((b[14] && b[14].pressed) || ax < -0.6) { pressed.left = true; }
+            if ((b[15] && b[15].pressed) || ax > 0.6) { pressed.right = true; }
+            if (b[0] && b[0].pressed) { pressed.select = true; }
+            if (b[1] && b[1].pressed) { pressed.back = true; }
         }
 
-        var focusable = Array.prototype.slice.call(overlay.querySelectorAll('.discMenuEntry'));
-        if (focusable.length === 0) {
-            return;
-        }
+        Object.keys(pressed).forEach(function (name) {
+            var held = gamepadHeld[name];
+            // Fire on press, then auto-repeat directions while held (not select/back).
+            var repeat = held && (name === 'up' || name === 'down' || name === 'left' || name === 'right') &&
+                now - held.last > (held.repeating ? 120 : 400);
+            if (held && !repeat) {
+                return;
+            }
 
-        var idx = focusable.indexOf(document.activeElement);
-        e.preventDefault();
-        var next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
-        focusable[(next + focusable.length) % focusable.length].focus();
+            gamepadHeld[name] = { last: now, repeating: !!held };
+            if (name === 'up') { moveFocus(0, -1); }
+            else if (name === 'down') { moveFocus(0, 1); }
+            else if (name === 'left') { moveFocus(-1, 0); }
+            else if (name === 'right') { moveFocus(1, 0); }
+            else if (name === 'select') { selectFocused(); }
+            else if (name === 'back') { goBack(currentParentItemId); }
+        });
+
+        Object.keys(gamepadHeld).forEach(function (name) {
+            if (!pressed[name]) {
+                delete gamepadHeld[name];
+            }
+        });
+
+        if (document.getElementById(OVERLAY_ID)) {
+            gamepadLoop = requestAnimationFrame(pollGamepad);
+        } else {
+            gamepadLoop = 0;
+        }
     }
 
     function backgroundStyle(background, parentItemId) {
@@ -203,6 +351,7 @@
         closeBtn.style.cssText =
             'position:absolute;top:1.5em;right:1.5em;background:none;border:none;color:#fff;' +
             'font-size:1.5em;cursor:pointer;line-height:1;';
+        closeBtn.tabIndex = -1;
         closeBtn.addEventListener('click', closeOverlay);
         overlay.appendChild(closeBtn);
 
@@ -214,7 +363,7 @@
         var list = document.createElement('div');
         list.style.cssText = 'display:flex;flex-direction:column;gap:0.5em;';
 
-        menu.Entries.forEach(function (entry) {
+        menu.Entries.forEach(function (entry, entryIndex) {
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'discMenuEntry';
@@ -224,12 +373,17 @@
                 'border:2px solid transparent;border-radius:0.4em;color:#fff;cursor:pointer;' +
                 'text-align:' + align + ';';
             btn.addEventListener('focus', function () {
+                lastFocusIndex[menuKey] = entryIndex;
                 btn.style.borderColor = accent;
                 btn.style.background = 'rgba(0,0,0,0.75)';
             });
             btn.addEventListener('blur', function () {
                 btn.style.borderColor = 'transparent';
                 btn.style.background = 'rgba(0,0,0,0.5)';
+            });
+            // Keep mouse and keyboard/remote highlight in sync.
+            btn.addEventListener('mouseenter', function () {
+                btn.focus();
             });
             btn.addEventListener('click', function () {
                 handleEntry(entry, parentItemId);
@@ -241,12 +395,18 @@
 
         if (!existing) {
             document.body.appendChild(overlay);
-            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keydown', onKeyDown, true);
+            if (!gamepadLoop) {
+                gamepadLoop = requestAnimationFrame(pollGamepad);
+            }
         }
 
-        var first = list.querySelector('.discMenuEntry');
-        if (first) {
-            first.focus();
+        // Like a disc remembering its highlighted button: returning to a menu
+        // lands on the entry you left it from (e.g. 'Special Features' after Back).
+        var entryEls = list.querySelectorAll('.discMenuEntry');
+        var remembered = entryEls[lastFocusIndex[menuKey]] || entryEls[0];
+        if (remembered) {
+            remembered.focus();
         }
     }
 
@@ -360,13 +520,7 @@
 
                 break;
             case 'back':
-                if (menuStack.length > 1) {
-                    menuStack.pop();
-                    renderOverlay(parentItemId);
-                } else {
-                    closeOverlay();
-                }
-
+                goBack(parentItemId);
                 break;
             case 'chapters':
                 alertUnavailable("Scene selection isn't implemented yet.");
