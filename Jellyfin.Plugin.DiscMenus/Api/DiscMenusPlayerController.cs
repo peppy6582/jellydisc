@@ -44,6 +44,7 @@ public sealed class DiscMenusPlayerController : ControllerBase
                 Title = kv.Value.Title,
                 Background = kv.Value.Background,
                 Theme = kv.Value.Theme,
+                Layout = kv.Value.Layout,
                 Entries = kv.Value.Entries.Select(e => ToRenderableEntry(e, binding)).ToList(),
             });
 
@@ -57,7 +58,17 @@ public sealed class DiscMenusPlayerController : ControllerBase
         });
     }
 
-    private static RenderableEntry ToRenderableEntry(MenuEntry entry, BindingDocument binding) => entry switch
+    private static RenderableEntry ToRenderableEntry(MenuEntry entry, BindingDocument binding)
+    {
+        var result = ToActionEntry(entry, binding);
+        result.Position = entry.Position;
+        result.Style = entry.Style;
+        result.Image = entry.Image;
+        result.ImageFocus = entry.ImageFocus;
+        return result;
+    }
+
+    private static RenderableEntry ToActionEntry(MenuEntry entry, BindingDocument binding) => entry switch
     {
         PlayFeatureEntry e => new RenderableEntry { Action = e.Action, Label = e.Label, StartChapter = e.StartChapter },
         PlayExtraEntry e => new RenderableEntry { Action = e.Action, Label = e.Label, ItemId = ResolvedItemId(binding, e.Extra) },

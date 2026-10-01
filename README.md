@@ -50,6 +50,34 @@ Target: **Jellyfin 12.x** (net10.0, targetAbi 12.0.0.0, Jellyfin.Controller 12.0
 - `build.yaml` – jprm plugin manifest (name/guid/version/targetAbi/framework) for
   packaging a release zip.
 
+## Authoring a disc-style layout
+
+By default a menu's entries flow in a centred-left column. To replicate a real DVD/Blu-ray menu,
+add placement data. Everything is optional and additive (`schemaVersion` stays 1), so older menus
+keep working unchanged.
+
+- **Per entry:** `position` `{ x, y, w?, h?, anchor? }` — percentages (0-100) of the menu screen,
+  so a layout scales to any display. `anchor` says which point of the button `x`/`y` refers to
+  (`top-left` default, `top`, `center`, `bottom-right`, ...). `style` is how the highlight is drawn:
+  `text`, `frame`, `glow` or `arrow`. `image` / `imageFocus` replace the text with artwork
+  (the label then becomes the accessible name).
+- **Per menu:** `layout` `{ titlePosition?, hideTitle?, buttonStyle? }` — where the title goes and
+  the default `style` for entries that don't set one.
+- **All or none:** within one menu either every entry has a `position` or none does (mixing makes
+  overlap ambiguous). Enforced by both `tools/validate.py` and the plugin's loader.
+- **Navigation just works:** focus moves to the nearest button in the pressed direction by on-screen
+  position, so any layout is navigable with arrow keys, a remote or a gamepad.
+
+**Shareable means no binaries and no code.** Images are never embedded files or paths: an `image` is
+an `https://` URL or a small `data:image/(png|jpeg|webp);base64,` URI (SVG is refused). URLs may not
+contain whitespace, quotes, parentheses or angle brackets. The server and the browser both re-check this,
+since a downloaded menu is untrusted input. Note an https image is fetched by the viewer's browser
+from that host, so the host sees the viewer's IP; an author who cares can use `data:` icons or the
+parent item's own Jellyfin images (`background.source: "jellyfin"`).
+
+Not yet implemented: free-floating decorative images/text layers, background video, menu music,
+transition animations, and scene-selection chapter grids (see the roadmap in the project notes).
+
 ## Matching
 Extras are matched by `type` (Jellyfin ExtraType) + `durationSec` (± `toleranceSec`),
 with `ordinal` as a tiebreaker, then manual linking. Never by filename.

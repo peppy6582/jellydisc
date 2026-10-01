@@ -118,7 +118,7 @@
         var existing = document.getElementById(OVERLAY_ID);
         if (existing) {
             existing.remove();
-            document.removeEventListener('keydown', onKeyDown, true);
+            window.removeEventListener('keydown', onKeyDown, true);
         }
     }
 
@@ -136,10 +136,42 @@
     var BACK_KEYCODES = { 461: true, 10009: true };
 
     var lastFocusIndex = {};
+    var lastMouse = { x: -1, y: -1 };
 
     function getEntries() {
         var overlay = document.getElementById(OVERLAY_ID);
         return overlay ? Array.prototype.slice.call(overlay.querySelectorAll('.discMenuEntry')) : [];
+    }
+
+    // How far candidate rect `r` lies in direction (dx,dy) from `from`, judged by
+    // edges rather than centres, or null if it isn't in that direction at all.
+    // A button on the same row is not "below" you even if its centre is a few
+    // pixels lower, so up/down in a single row of buttons never hops sideways.
+    function distanceAlong(from, r, dx, dy) {
+        var tol = 0.25 * (dx !== 0 ? from.width : from.height);
+        var gap = dx === 1 ? r.left - from.right
+            : dx === -1 ? from.left - r.right
+            : dy === 1 ? r.top - from.bottom
+            : from.top - r.bottom;
+        if (gap < -tol) {
+            return null;
+        }
+
+        var cx = r.left + r.width / 2 - (from.left + from.width / 2);
+        var cy = r.top + r.height / 2 - (from.top + from.height / 2);
+        return cx * dx + cy * dy;
+    }
+
+    function overlapsAcross(from, r, dx) {
+        return dx !== 0
+            ? from.top < r.bottom && r.top < from.bottom
+            : from.left < r.right && r.left < from.right;
+    }
+
+    function acrossOffset(from, r, dx) {
+        var cx = r.left + r.width / 2 - (from.left + from.width / 2);
+        var cy = r.top + r.height / 2 - (from.top + from.height / 2);
+        return Math.abs(dx !== 0 ? cy : cx);
     }
 
     function moveFocus(dx, dy) {
@@ -155,12 +187,10 @@
         }
 
         var from = entries[current].getBoundingClientRect();
-        var fx = from.left + from.width / 2;
-        var fy = from.top + from.height / 2;
         var best = null;
-        var bestScore = Infinity;
+        var bestKey = null;
         var wrap = null;
-        var wrapScore = Infinity;
+        var wrapKey = null;
 
         entries.forEach(function (el, i) {
             if (i === current) {
@@ -168,22 +198,34 @@
             }
 
             var r = el.getBoundingClientRect();
-            var vx = r.left + r.width / 2 - fx;
-            var vy = r.top + r.height / 2 - fy;
-            var along = vx * dx + vy * dy;
-            var across = Math.abs(vx * dy - vy * dx);
-            // Off-axis distance counts double so "down" prefers the entry
-            // straight below over a nearer one far off to the side.
-            var score = along + 2 * across;
-            if (along > 1) {
-                if (score < bestScore) {
+            var ahead = distanceAlong(from, r, dx, dy);
+            var across = acrossOffset(from, r, dx);
+            if (ahead !== null) {
+                // Same row/column as you first (nearest wins); otherwise the
+                // closest diagonal, weighting sideways drift double.
+                var key = overlapsAcross(from, r, dx) ? [0, ahead] : [1, ahead + 2 * across];
+                if (!bestKey || key[0] < bestKey[0] || (key[0] === bestKey[0] && key[1] < bestKey[1])) {
                     best = el;
-                    bestScore = score;
+                    bestKey = key;
                 }
-            } else if (score < wrapScore) {
-                // Nothing further in this direction: wrap to the far side.
+
+                return;
+            }
+
+            // Not ahead of you. Only buttons genuinely *behind* you are wrap
+            // targets; same-row neighbours for an up/down press are ignored.
+            var behind = distanceAlong(from, r, -dx, -dy);
+            if (behind === null) {
+                return;
+            }
+
+            // Farthest behind wins (so wrapping reverses the opposite press
+            // exactly and every button stays reachable); ties go to the
+            // straightest one.
+            var far = -behind;
+            if (!wrapKey || far < wrapKey[0] - 20 || (far < wrapKey[0] + 20 && across < wrapKey[1])) {
                 wrap = el;
-                wrapScore = score;
+                wrapKey = [far, across];
             }
         });
 
@@ -229,7 +271,7 @@
             // Capture phase + stop: jellyfin-web's own key handlers (Escape,
             // Backspace, arrows) must not also act on the page behind the menu.
             e.preventDefault();
-            e.stopPropagation();
+            e.stopImmediatePropagation();
         }
     }
 
@@ -306,6 +348,18 @@
             return 'background-color:' + background.Color + ';';
         }
 
+        if (background.Source === 'image') {
+            var imageUrl = safeImage(background.Image);
+            if (imageUrl) {
+                return (
+                    'background-image:linear-gradient(rgba(0,0,0,' + dim + '),rgba(0,0,0,' + dim + ')),url(' + imageUrl + ');' +
+                    'background-size:cover;background-position:center;background-color:#101010;'
+                );
+            }
+
+            return 'background-color:#101010;';
+        }
+
         if (background.Source === 'jellyfin' && window.ApiClient) {
             var url = ApiClient.getImageUrl(parentItemId, {
                 type: background.ImageType || 'Backdrop',
@@ -319,6 +373,223 @@
 
         // tmdb/fanart sources: not implemented yet, see file header.
         return 'background-color:#101010;';
+    }
+
+    // ---- Authored layout ---------------------------------------------------
+
+    var ANCHOR_SHIFT = {
+        'top-left': [0, 0], top: [-50, 0], 'top-right': [-100, 0],
+        left: [0, -50], center: [-50, -50], right: [-100, -50],
+        'bottom-left': [0, -100], bottom: [-50, -100], 'bottom-right': [-100, -100],
+    };
+
+    // Position an element at percentages of the menu screen; x/y refer to the
+    // chosen anchor point of the element (so "bottom" centres it horizontally
+    // on x and sits its bottom edge on y).
+    function place(el, pos) {
+        var shift = ANCHOR_SHIFT[pos.Anchor || 'top-left'] || ANCHOR_SHIFT['top-left'];
+        el.style.position = 'absolute';
+        el.style.left = pos.X + '%';
+        el.style.top = pos.Y + '%';
+        if (pos.W != null) {
+            el.style.width = pos.W + '%';
+        }
+
+        if (pos.H != null) {
+            el.style.height = pos.H + '%';
+        }
+
+        el.style.transform = 'translate(' + shift[0] + '%,' + shift[1] + '%)';
+    }
+
+    // Defense in depth: the server already rejects anything else, but menu JSON
+    // can come from anywhere, so never hand the browser a URL we wouldn't vouch for.
+    var SAFE_IMAGE = /^(https:\/\/[^\s"'()<>\\]+|data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/=]+|asset:[A-Za-z0-9][A-Za-z0-9._-]{0,63}(\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,3})$/;
+
+    // Returns a URL that is safe to hand to an <img>/CSS url(), or null. An
+    // "asset:<folder>/<file>" reference becomes this server's asset endpoint.
+    function safeImage(url) {
+        if (typeof url !== 'string' || !SAFE_IMAGE.test(url)) {
+            return null;
+        }
+
+        if (url.indexOf('asset:') === 0) {
+            if (!window.ApiClient) {
+                return null;
+            }
+
+            return ApiClient.getUrl('DiscMenus/Assets/' + url.slice(6).split('/').map(encodeURIComponent).join('/'));
+        }
+
+        return url;
+    }
+
+    // Built-in font stacks only; the menu JSON picks one by name and never
+    // supplies a font-family string of its own.
+    var FONT_STACKS = {
+        sans: 'system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
+        serif: 'Georgia,"Times New Roman",Times,serif',
+        condensed: '"Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif',
+        wide: 'Verdana,"DejaVu Sans","Trebuchet MS",Geneva,sans-serif',
+        mono: 'ui-monospace,Menlo,Consolas,"DejaVu Sans Mono",monospace',
+    };
+
+    // Typography declared by the theme, as inline CSS. Sizes are in vh so text
+    // scales with the screen the same way positions do.
+    function typographyCss(theme) {
+        var css = '';
+        if (theme.Font && FONT_STACKS[theme.Font]) {
+            css += 'font-family:' + FONT_STACKS[theme.Font] + ';';
+        }
+
+        if (typeof theme.FontSize === 'number') {
+            css += 'font-size:' + theme.FontSize + 'vh;';
+        }
+
+        if (theme.Uppercase) {
+            css += 'text-transform:uppercase;';
+        }
+
+        if (theme.Bold) {
+            css += 'font-weight:700;';
+        }
+
+        if (typeof theme.LetterSpacing === 'number') {
+            css += 'letter-spacing:' + theme.LetterSpacing + 'em;';
+        }
+
+        return css;
+    }
+
+    var HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+    function safeColor(c, fallback) {
+        return typeof c === 'string' && HEX_COLOR.test(c) ? c : fallback;
+    }
+
+    function num(v, fallback) {
+        return typeof v === 'number' && isFinite(v) ? v : fallback;
+    }
+
+    // Decorative layers: drawn behind the buttons, never focusable or clickable.
+    function renderLayer(layer, overlay) {
+        var el;
+        if (layer.Type === 'panel') {
+            el = document.createElement('div');
+            el.style.boxSizing = 'border-box';
+            el.style.background = safeColor(layer.Fill, 'transparent');
+            if (layer.BorderColor && num(layer.BorderWidth, 0) > 0) {
+                el.style.border = num(layer.BorderWidth, 0) + 'vh solid ' + safeColor(layer.BorderColor, 'transparent');
+            }
+
+            if (layer.Radius != null) {
+                el.style.borderRadius = num(layer.Radius, 0) + 'vh';
+            }
+        } else if (layer.Type === 'image' && safeImage(layer.Image)) {
+            el = document.createElement('img');
+            el.src = safeImage(layer.Image);
+            el.alt = '';
+            el.draggable = false;
+            el.style.objectFit = layer.Fit === 'fill' || layer.Fit === 'cover' ? layer.Fit : 'contain';
+        } else {
+            return;
+        }
+
+        if (layer.Opacity != null) {
+            el.style.opacity = String(num(layer.Opacity, 1));
+        }
+
+        el.style.pointerEvents = 'none';
+        el.setAttribute('aria-hidden', 'true');
+        place(el, layer.Position);
+        overlay.appendChild(el);
+    }
+
+    function buildEntryButton(entry, defaultStyle, theme, align) {
+        var accent = safeColor(theme.Accent, '#3ddc84');
+        var textColor = safeColor(theme.TextColor, '#fff');
+        var style = entry.Style || defaultStyle;
+        var image = safeImage(entry.Image);
+        var imageFocus = safeImage(entry.ImageFocus);
+        var sized = !!(entry.Position && (entry.Position.W != null || entry.Position.H != null));
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'discMenuEntry';
+        btn.setAttribute('aria-label', entry.Label);
+        btn.style.cssText =
+            'font-size:1.25em;padding:0.5em 1.25em;color:' + textColor + ';cursor:pointer;background:transparent;' +
+            'border:2px solid transparent;border-radius:0.4em;text-align:' + align + ';' +
+            'text-shadow:0 2px 6px rgba(0,0,0,0.8);outline:none;' + typographyCss(theme);
+
+        var arrow = null;
+        var img = null;
+
+        if (image) {
+            // Artwork button: the label is only an accessible name, not drawn.
+            btn.title = entry.Label;
+            btn.style.padding = '0';
+            btn.style.border = 'none';
+            img = document.createElement('img');
+            img.src = image;
+            img.alt = entry.Label;
+            img.draggable = false;
+            img.style.cssText = sized
+                ? 'display:block;width:100%;height:100%;object-fit:contain;'
+                : 'display:block;max-width:40vw;max-height:25vh;';
+            btn.appendChild(img);
+        } else {
+            if (style === 'arrow') {
+                arrow = document.createElement('span');
+                arrow.textContent = '▶';
+                arrow.setAttribute('aria-hidden', 'true');
+                arrow.style.cssText = 'color:' + accent + ';margin-right:0.5em;visibility:hidden;';
+                btn.appendChild(arrow);
+            }
+
+            btn.appendChild(document.createTextNode(entry.Label));
+            if (style === 'frame') {
+                btn.style.background = 'rgba(0,0,0,0.5)';
+            }
+        }
+
+        function highlight(on) {
+            if (img) {
+                if (imageFocus) {
+                    img.src = on ? imageFocus : image;
+                } else {
+                    img.style.filter = on ? 'drop-shadow(0 0 10px ' + accent + ') brightness(1.15)' : 'none';
+                }
+
+                return;
+            }
+
+            switch (style) {
+                case 'frame':
+                    btn.style.borderColor = on ? accent : 'transparent';
+                    btn.style.background = on ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)';
+                    break;
+                case 'glow':
+                    btn.style.textShadow = on
+                        ? '0 0 10px ' + accent + ',0 0 22px ' + accent
+                        : '0 2px 6px rgba(0,0,0,0.8)';
+                    break;
+                case 'arrow':
+                    arrow.style.visibility = on ? 'visible' : 'hidden';
+                    break;
+                default: // text
+                    btn.style.color = on ? accent : textColor;
+                    break;
+            }
+        }
+
+        btn.addEventListener('focus', function () {
+            highlight(true);
+        });
+        btn.addEventListener('blur', function () {
+            highlight(false);
+        });
+        return btn;
     }
 
     function renderOverlay(parentItemId) {
@@ -338,10 +609,16 @@
         var align = theme.Align || 'left';
         var alignItems = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
         var background = menu.Background || menuDoc.Background;
+        var layout = menu.Layout || {};
+        var defaultStyle = layout.ButtonStyle || 'frame';
+        // The server guarantees all-or-none, so one check is enough.
+        var positioned = menu.Entries.length > 0 && menu.Entries.every(function (e) { return !!e.Position; });
 
         overlay.style.cssText =
-            'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;' +
-            'justify-content:center;align-items:' + alignItems + ';padding:4em;color:#fff;' +
+            'position:fixed;inset:0;z-index:9999;color:#fff;overflow:hidden;' +
+            (positioned
+                ? ''
+                : 'display:flex;flex-direction:column;justify-content:center;align-items:' + alignItems + ';padding:4em;') +
             backgroundStyle(background, parentItemId);
 
         var closeBtn = document.createElement('button');
@@ -350,40 +627,60 @@
         closeBtn.setAttribute('aria-label', 'Close disc menu');
         closeBtn.style.cssText =
             'position:absolute;top:1.5em;right:1.5em;background:none;border:none;color:#fff;' +
-            'font-size:1.5em;cursor:pointer;line-height:1;';
+            'font-size:1.5em;cursor:pointer;line-height:1;z-index:1;';
         closeBtn.tabIndex = -1;
         closeBtn.addEventListener('click', closeOverlay);
         overlay.appendChild(closeBtn);
 
-        var title = document.createElement('h1');
-        title.textContent = menu.Title;
-        title.style.cssText = 'margin:0 0 0.75em;font-size:2em;text-shadow:0 2px 8px rgba(0,0,0,0.8);';
-        overlay.appendChild(title);
+        (layout.Layers || []).forEach(function (layer) {
+            renderLayer(layer, overlay);
+        });
 
-        var list = document.createElement('div');
-        list.style.cssText = 'display:flex;flex-direction:column;gap:0.5em;';
+        if (!layout.HideTitle) {
+            var title = document.createElement('h1');
+            title.textContent = menu.Title;
+            title.style.cssText =
+                'margin:0 0 0.75em;font-size:2em;text-shadow:0 2px 8px rgba(0,0,0,0.8);color:' +
+                safeColor(theme.TextColor, '#fff') + ';' + typographyCss(theme);
+            if (typeof theme.FontSize === 'number') {
+                title.style.fontSize = theme.FontSize * 1.6 + 'vh';
+            }
+            if (layout.TitlePosition) {
+                title.style.margin = '0';
+                place(title, layout.TitlePosition);
+            }
+
+            overlay.appendChild(title);
+        }
+
+        var list = positioned ? overlay : document.createElement('div');
+        if (!positioned) {
+            list.style.cssText = 'display:flex;flex-direction:column;gap:0.5em;';
+        }
 
         menu.Entries.forEach(function (entry, entryIndex) {
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'discMenuEntry';
-            btn.textContent = entry.Label;
-            btn.style.cssText =
-                'font-size:1.25em;padding:0.5em 1.25em;background:rgba(0,0,0,0.5);' +
-                'border:2px solid transparent;border-radius:0.4em;color:#fff;cursor:pointer;' +
-                'text-align:' + align + ';';
+            var btn = buildEntryButton(entry, defaultStyle, theme, align);
+            if (positioned) {
+                place(btn, entry.Position);
+            }
+
             btn.addEventListener('focus', function () {
                 lastFocusIndex[menuKey] = entryIndex;
-                btn.style.borderColor = accent;
-                btn.style.background = 'rgba(0,0,0,0.75)';
-            });
-            btn.addEventListener('blur', function () {
-                btn.style.borderColor = 'transparent';
-                btn.style.background = 'rgba(0,0,0,0.5)';
             });
             // Keep mouse and keyboard/remote highlight in sync.
-            btn.addEventListener('mouseenter', function () {
-                btn.focus();
+            // Only on real pointer movement: a menu appearing under a resting
+            // cursor fires mouseenter without the user moving, which would
+            // steal focus from the keyboard/remote.
+            btn.addEventListener('mousemove', function (e) {
+                if (e.screenX === lastMouse.x && e.screenY === lastMouse.y) {
+                    return;
+                }
+
+                lastMouse.x = e.screenX;
+                lastMouse.y = e.screenY;
+                if (document.activeElement !== btn) {
+                    btn.focus();
+                }
             });
             btn.addEventListener('click', function () {
                 handleEntry(entry, parentItemId);
@@ -391,11 +688,13 @@
             list.appendChild(btn);
         });
 
-        overlay.appendChild(list);
+        if (!positioned) {
+            overlay.appendChild(list);
+        }
 
         if (!existing) {
             document.body.appendChild(overlay);
-            document.addEventListener('keydown', onKeyDown, true);
+            window.addEventListener('keydown', onKeyDown, true);
             if (!gamepadLoop) {
                 gamepadLoop = requestAnimationFrame(pollGamepad);
             }

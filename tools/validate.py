@@ -19,6 +19,10 @@ def semantic(m):
             if a == "playSequence":
                 errs += [f"{mk}[{i}] unknown extra {x}" for x in e["extras"] if x not in extras]
             if a == "submenu" and e["menu"] not in menus: errs.append(f"{mk}[{i}] unknown menu {e['menu']}")
+    for mk, menu in menus.items():
+        placed = [("position" in e) for e in menu["entries"]]
+        if any(placed) and not all(placed):
+            errs.append(f"menu '{mk}' mixes positioned and unpositioned entries (position all or none)")
     seen, stack = set(), [m["root"]]
     while stack:
         k = stack.pop()
@@ -46,6 +50,29 @@ neg = {
   "dangling extra ref": mut(lambda d: d["menus"]["features"]["entries"][0].update(extra="nope")),
   "orphan menu": mut(lambda d: d["menus"].update(orphan={"title":"O","entries":[{"action":"back","label":"Back"}]})),
   "season w/o number": mut(lambda d: d["match"].update(itemType="Season")),
+  "position out of range": mut(lambda d: d["menus"]["main"]["entries"][0].update(position={"x":120,"y":10})),
+  "position missing y": mut(lambda d: d["menus"]["main"]["entries"][0].update(position={"x":10})),
+  "bad anchor": mut(lambda d: d["menus"]["main"]["entries"][0].update(position={"x":1,"y":1,"anchor":"middle"})),
+  "unknown button style": mut(lambda d: d["menus"]["main"]["entries"][0].update(style="neon")),
+  "image is a file path": mut(lambda d: d["menus"]["main"]["entries"][0].update(image="/mnt/user/art/play.png")),
+  "image is http not https": mut(lambda d: d["menus"]["main"]["entries"][0].update(image="http://example.com/a.png")),
+  "image url with quote/paren": mut(lambda d: d["menus"]["main"]["entries"][0].update(image='https://example.com/a.png");x:url(')),
+  "svg data uri": mut(lambda d: d["menus"]["main"]["entries"][0].update(image="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")),
+  "mixed positioned/unpositioned": mut(lambda d: d["menus"]["features"]["entries"][0].update(position={"x":10,"y":10})),
+  "unknown font": mut(lambda d: d["theme"].update(font="Comic Sans MS")),
+  "font stack injection": mut(lambda d: d["theme"].update(font="x;background:url(//evil)")),
+  "bad text colour": mut(lambda d: d["theme"].update(textColor="red")),
+  "fontSize too big": mut(lambda d: d["theme"].update(fontSize=50)),
+  "unknown layer type": mut(lambda d: d["menus"]["main"].update(layout={"layers":[{"type":"script","position":{"x":0,"y":0}}]})),
+  "layer without position": mut(lambda d: d["menus"]["main"].update(layout={"layers":[{"type":"panel","fill":"#000000"}]})),
+  "panel with image field": mut(lambda d: d["menus"]["main"].update(layout={"layers":[{"type":"panel","position":{"x":0,"y":0},"image":"https://e.com/a.png"}]})),
+  "image layer w/ path": mut(lambda d: d["menus"]["main"].update(layout={"layers":[{"type":"image","position":{"x":0,"y":0},"image":"/etc/passwd"}]})),
+  "image bg without image": mut(lambda d: d.update(background={"source":"image"})),
+  "asset path traversal": mut(lambda d: d["menus"]["main"]["entries"][0].update(image="asset:../../etc/passwd")),
+  "asset absolute path": mut(lambda d: d["menus"]["main"]["entries"][0].update(image="asset:/etc/passwd")),
+  "asset hidden file": mut(lambda d: d["menus"]["main"]["entries"][0].update(image="asset:.secret/x.png")),
+  "asset too deep": mut(lambda d: d["menus"]["main"]["entries"][0].update(image="asset:a/b/c/d/e/f.png")),
+  "layer unknown fit": mut(lambda d: d["menus"]["main"].update(layout={"layers":[{"type":"image","position":{"x":0,"y":0},"image":"asset:a/b.webp","fit":"stretchy"}]})),
   "bad uuid": mut(lambda d: d.update(menuId="not-a-uuid")),
 }
 ok = True

@@ -29,6 +29,8 @@ public sealed class RenderableMenu
 
     public ThemeSpec? Theme { get; init; }
 
+    public MenuLayout? Layout { get; init; }
+
     public required List<RenderableEntry> Entries { get; init; }
 }
 
@@ -41,6 +43,15 @@ public sealed class RenderableEntry
     public required string Action { get; init; }
 
     public required string Label { get; init; }
+
+    // Presentation, copied from the menu entry for every action type.
+    public PositionSpec? Position { get; set; }
+
+    public string? Style { get; set; }
+
+    public string? Image { get; set; }
+
+    public string? ImageFocus { get; set; }
 
     /// <summary>playFeature only.</summary>
     public int? StartChapter { get; init; }

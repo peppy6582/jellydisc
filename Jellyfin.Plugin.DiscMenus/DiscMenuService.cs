@@ -24,6 +24,9 @@ public sealed class DiscMenuService
         _logger = logger;
     }
 
+    /// <summary>Menu art lives in an "assets" folder beside the menu/binding files (never scanned as menus).</summary>
+    public static string AssetsPath => Path.Combine(MenusPath, "assets");
+
     private static string MenusPath =>
         string.IsNullOrEmpty(Plugin.Instance?.Configuration.MenusPath)
             ? Path.Combine(Plugin.Instance!.DataFolderPath, "menus")

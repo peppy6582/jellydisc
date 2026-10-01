@@ -100,6 +100,9 @@ public enum BackgroundSource
 
     [JsonStringEnumMemberName("color")]
     Color,
+
+    [JsonStringEnumMemberName("image")]
+    Image,
 }
 
 /// <summary>
@@ -126,6 +129,9 @@ public sealed class BackgroundSpec
 
     public string? Color { get; init; }
 
+    /// <summary>For source=image: https URL, data: URI or asset: reference.</summary>
+    public string? Image { get; init; }
+
     public double? Dim { get; init; }
 }
 
@@ -149,6 +155,20 @@ public sealed class ThemeSpec
     public string? Accent { get; init; }
 
     public ThemeAlign? Align { get; init; }
+
+    public string? TextColor { get; init; }
+
+    /// <summary>One of sans/serif/condensed/wide/mono (a built-in stack; never an arbitrary name).</summary>
+    public string? Font { get; init; }
+
+    /// <summary>Percent of the screen height.</summary>
+    public double? FontSize { get; init; }
+
+    public bool? Uppercase { get; init; }
+
+    public bool? Bold { get; init; }
+
+    public double? LetterSpacing { get; init; }
 }
 
 /// <summary>
@@ -182,5 +202,56 @@ public sealed class MenuDef
 
     public ThemeSpec? Theme { get; init; }
 
+    public MenuLayout? Layout { get; init; }
+
     public required List<MenuEntry> Entries { get; init; }
+}
+
+/// <summary>Where an element sits, in percent of the menu screen.</summary>
+public sealed class PositionSpec
+{
+    public double X { get; init; }
+
+    public double Y { get; init; }
+
+    public double? W { get; init; }
+
+    public double? H { get; init; }
+
+    /// <summary>Which point of the element x/y refers to (e.g. "center", "bottom-left"); default top-left.</summary>
+    public string? Anchor { get; init; }
+}
+
+public sealed class MenuLayout
+{
+    public PositionSpec? TitlePosition { get; init; }
+
+    public bool? HideTitle { get; init; }
+
+    public string? ButtonStyle { get; init; }
+
+    public List<LayerSpec>? Layers { get; init; }
+}
+
+/// <summary>A decorative layer behind the buttons: type "panel" (flat box) or "image".</summary>
+public sealed class LayerSpec
+{
+    public required string Type { get; init; }
+
+    public required PositionSpec Position { get; init; }
+
+    public string? Fill { get; init; }
+
+    public double? Opacity { get; init; }
+
+    public string? BorderColor { get; init; }
+
+    public double? BorderWidth { get; init; }
+
+    public double? Radius { get; init; }
+
+    public string? Image { get; init; }
+
+    /// <summary>contain (default) / fill / cover, for image layers.</summary>
+    public string? Fit { get; init; }
 }

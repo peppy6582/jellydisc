@@ -54,6 +54,88 @@
       "pattern": "^[^<>]*$"
     },
 
+    "percent": { "type": "number", "minimum": 0, "maximum": 100 },
+
+    "position": {
+      "description": "Where an element sits, as percentages of the menu screen so layouts scale to any display. x/y place the element's anchor point; w/h optionally size it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "$ref": "#/$defs/percent" },
+        "y": { "$ref": "#/$defs/percent" },
+        "w": { "$ref": "#/$defs/percent" },
+        "h": { "$ref": "#/$defs/percent" },
+        "anchor": {
+          "description": "Which point of the element x/y refers to. Default top-left.",
+          "enum": ["top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"]
+        }
+      }
+    },
+
+    "buttonStyle": {
+      "description": "How a button looks and how its highlight is drawn: plain text, an outline frame, a glow, or a pointer arrow beside the label.",
+      "enum": ["text", "frame", "glow", "arrow"]
+    },
+
+    "imageRef": {
+      "description": "Artwork for a button. Never a file path. Either an https URL, a small inline data: URI for icons, or an asset:<folder>/<file> reference naming a file in the server's menu assets folder (the menu's own art, served by the plugin). Renderers draw it only via an image element, never as markup.",
+      "type": "string",
+      "maxLength": 20000,
+      "pattern": "^(https://[^\\s\"'()<>\\\\]+|data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|asset:[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,3})$"
+    },
+
+    "menuLayout": {
+      "description": "Optional screen layout. Without it (or for entries with no position) buttons flow in a column.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "titlePosition": { "$ref": "#/$defs/position" },
+        "hideTitle": { "type": "boolean" },
+        "buttonStyle": { "description": "Default for entries that don't set their own style.", "$ref": "#/$defs/buttonStyle" },
+        "layers": {
+          "description": "Decorative shapes and images drawn behind the buttons, in order (later layers on top). They are not focusable.",
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/layer" }
+        }
+      }
+    },
+
+    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+
+    "layer": {
+      "type": "object",
+      "required": ["type", "position"],
+      "oneOf": [
+        {
+          "title": "A flat panel (a bar or box behind the buttons)",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "panel" },
+            "position": { "$ref": "#/$defs/position" },
+            "fill": { "$ref": "#/$defs/color" },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "borderColor": { "$ref": "#/$defs/color" },
+            "borderWidth": { "description": "Percent of the screen height.", "type": "number", "minimum": 0, "maximum": 10 },
+            "radius": { "description": "Corner radius, percent of the screen height.", "type": "number", "minimum": 0, "maximum": 50 }
+          }
+        },
+        {
+          "title": "A decorative image",
+          "additionalProperties": false,
+          "required": ["image"],
+          "properties": {
+            "type": { "const": "image" },
+            "position": { "$ref": "#/$defs/position" },
+            "image": { "$ref": "#/$defs/imageRef" },
+            "fit": { "description": "contain (default) keeps the picture's proportions inside the box; fill stretches it; cover crops it to fill.", "enum": ["contain", "fill", "cover"] },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      ]
+    },
+
     "meta": {
       "type": "object",
       "additionalProperties": false,
@@ -116,7 +198,11 @@
       "additionalProperties": false,
       "required": ["source"],
       "properties": {
-        "source": { "enum": ["jellyfin", "tmdb", "fanart", "color"] },
+        "source": { "enum": ["jellyfin", "tmdb", "fanart", "color", "image"] },
+        "image": {
+          "description": "For source=image: the picture to use (https URL, data: URI, or asset: reference).",
+          "$ref": "#/$defs/imageRef"
+        },
         "imageType": {
           "description": "For source=jellyfin: which of the parent item's images to use.",
           "enum": ["Primary", "Art", "Backdrop", "Banner", "Logo", "Thumb", "Disc", "Box", "Screenshot", "Menu", "BoxRear"]
@@ -152,6 +238,7 @@
         { "if": { "properties": { "source": { "const": "tmdb" } } }, "then": { "required": ["tmdbFilePath"] } },
         { "if": { "properties": { "source": { "const": "fanart" } } }, "then": { "required": ["fanartId"] } },
         { "if": { "properties": { "source": { "const": "color" } } }, "then": { "required": ["color"] } },
+        { "if": { "properties": { "source": { "const": "image" } } }, "then": { "required": ["image"] } },
         { "if": { "properties": { "source": { "const": "jellyfin" } } }, "then": { "required": ["imageType"] } }
       ]
     },
@@ -166,8 +253,17 @@
           "type": "string",
           "pattern": "^[a-z0-9-]{1,32}$"
         },
-        "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-        "align": { "enum": ["left", "center", "right"] }
+        "accent": { "description": "Highlight colour of the focused button.", "$ref": "#/$defs/color" },
+        "align": { "enum": ["left", "center", "right"] },
+        "textColor": { "description": "Button text colour when not highlighted. Default white.", "$ref": "#/$defs/color" },
+        "font": {
+          "description": "A built-in font family. Arbitrary font names are not accepted.",
+          "enum": ["sans", "serif", "condensed", "wide", "mono"]
+        },
+        "fontSize": { "description": "Button text size as percent of the screen height, so it scales with the display.", "type": "number", "minimum": 1, "maximum": 10 },
+        "uppercase": { "type": "boolean" },
+        "bold": { "type": "boolean" },
+        "letterSpacing": { "description": "Extra spacing between letters, in em.", "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
 
@@ -212,6 +308,7 @@
         "title": { "$ref": "#/$defs/label" },
         "background": { "$ref": "#/$defs/background" },
         "theme": { "$ref": "#/$defs/theme" },
+        "layout": { "$ref": "#/$defs/menuLayout" },
         "entries": {
           "type": "array",
           "minItems": 1,
@@ -235,6 +332,10 @@
           "properties": {
             "action": { "const": "playFeature" },
             "label": true,
+            "position": { "$ref": "#/$defs/position" },
+            "style": { "$ref": "#/$defs/buttonStyle" },
+            "image": { "$ref": "#/$defs/imageRef" },
+            "imageFocus": { "$ref": "#/$defs/imageRef" },
             "startChapter": { "type": "integer", "minimum": 1 }
           }
         },
@@ -245,6 +346,10 @@
           "properties": {
             "action": { "const": "playExtra" },
             "label": true,
+            "position": { "$ref": "#/$defs/position" },
+            "style": { "$ref": "#/$defs/buttonStyle" },
+            "image": { "$ref": "#/$defs/imageRef" },
+            "imageFocus": { "$ref": "#/$defs/imageRef" },
             "extra": { "$ref": "#/$defs/key" }
           }
         },
@@ -255,6 +360,10 @@
           "properties": {
             "action": { "const": "playSequence" },
             "label": true,
+            "position": { "$ref": "#/$defs/position" },
+            "style": { "$ref": "#/$defs/buttonStyle" },
+            "image": { "$ref": "#/$defs/imageRef" },
+            "imageFocus": { "$ref": "#/$defs/imageRef" },
             "extras": {
               "type": "array",
               "minItems": 2,
@@ -269,6 +378,10 @@
           "properties": {
             "action": { "const": "submenu" },
             "label": true,
+            "position": { "$ref": "#/$defs/position" },
+            "style": { "$ref": "#/$defs/buttonStyle" },
+            "image": { "$ref": "#/$defs/imageRef" },
+            "imageFocus": { "$ref": "#/$defs/imageRef" },
             "menu": { "$ref": "#/$defs/key" }
           }
         },
@@ -278,6 +391,10 @@
           "properties": {
             "action": { "const": "chapters" },
             "label": true,
+            "position": { "$ref": "#/$defs/position" },
+            "style": { "$ref": "#/$defs/buttonStyle" },
+            "image": { "$ref": "#/$defs/imageRef" },
+            "imageFocus": { "$ref": "#/$defs/imageRef" },
             "perPage": { "type": "integer", "minimum": 1, "maximum": 24 }
           }
         },
@@ -286,7 +403,11 @@
           "additionalProperties": false,
           "properties": {
             "action": { "const": "back" },
-            "label": true
+            "label": true,
+            "position": { "$ref": "#/$defs/position" },
+            "style": { "$ref": "#/$defs/buttonStyle" },
+            "image": { "$ref": "#/$defs/imageRef" },
+            "imageFocus": { "$ref": "#/$defs/imageRef" }
           }
         }
       ]

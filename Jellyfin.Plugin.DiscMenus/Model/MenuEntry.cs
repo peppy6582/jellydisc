@@ -12,6 +12,18 @@ public abstract class MenuEntry
     public required string Action { get; init; }
 
     public required string Label { get; init; }
+
+    /// <summary>Optional authored placement; null means "flow in the default column".</summary>
+    public PositionSpec? Position { get; init; }
+
+    /// <summary>One of text/frame/glow/arrow; null falls back to the menu layout's default.</summary>
+    public string? Style { get; init; }
+
+    /// <summary>https or data: image URL for button artwork (schema-validated).</summary>
+    public string? Image { get; init; }
+
+    /// <summary>Artwork shown while the button is highlighted.</summary>
+    public string? ImageFocus { get; init; }
 }
 
 /// <summary>Play the main feature, optionally from a chapter.</summary>

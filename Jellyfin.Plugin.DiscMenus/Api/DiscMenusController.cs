@@ -191,6 +191,37 @@ public sealed class DiscMenusController : ControllerBase
         return Content(result, "text/html");
     }
 
+    private static readonly Dictionary<string, string> AssetTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".webp"] = "image/webp",
+        [".png"] = "image/png",
+        [".jpg"] = "image/jpeg",
+        [".jpeg"] = "image/jpeg",
+    };
+
+    /// <summary>
+    /// Serves a menu's own art (an "asset:" image reference) from the assets folder.
+    /// Anonymous because an img/CSS fetch cannot carry Jellyfin's auth header. Only raster
+    /// image files inside the assets folder are ever served; any path that escapes it, or
+    /// isn't an existing image file, is a 404.
+    /// </summary>
+    [HttpGet("Assets/{**path}")]
+    [AllowAnonymous]
+    public ActionResult GetAsset([FromRoute] string path)
+    {
+        var root = Path.GetFullPath(DiscMenuService.AssetsPath) + Path.DirectorySeparatorChar;
+        var full = Path.GetFullPath(Path.Combine(root, path));
+        if (!full.StartsWith(root, StringComparison.Ordinal)
+            || !AssetTypes.TryGetValue(Path.GetExtension(full), out var contentType)
+            || !System.IO.File.Exists(full))
+        {
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = "no-cache";
+        return PhysicalFile(full, contentType, new FileInfo(full).LastWriteTimeUtc, null);
+    }
+
     /// <summary>The web menu renderer script injected into jellyfin-web by <see cref="TransformIndexHtml"/>.</summary>
     [HttpGet("web/discmenus.js")]
     [AllowAnonymous]
