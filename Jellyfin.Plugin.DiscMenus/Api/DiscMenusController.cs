@@ -265,6 +265,20 @@ public sealed class DiscMenusController : ControllerBase
         return PhysicalFile(full, contentType, new FileInfo(full).LastWriteTimeUtc, null, enableRangeProcessing: true);
     }
 
+    /// <summary>The page the editor's live preview embeds (the renderer in preview mode).</summary>
+    [HttpGet("web/preview.html")]
+    [AllowAnonymous]
+    public ContentResult GetPreviewPage()
+    {
+        var assembly = GetType().Assembly;
+        var resourceName = $"{assembly.GetName().Name}.Web.preview.html";
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' not found.");
+        using var reader = new StreamReader(stream);
+        Response.Headers.CacheControl = "no-cache";
+        return Content(reader.ReadToEnd().Replace("@@VERSION@@", ScriptVersion), "text/html");
+    }
+
     /// <summary>The web menu renderer script injected into jellyfin-web by <see cref="TransformIndexHtml"/>.</summary>
     [HttpGet("web/discmenus.js")]
     [AllowAnonymous]

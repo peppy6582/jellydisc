@@ -41,6 +41,15 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             EnableInMainMenu = true,
             MenuSection = "server",
             MenuIcon = "extension",
+        },
+        new PluginPageInfo
+        {
+            Name = "DiscMenusEditor",
+            EmbeddedResourcePath = $"{GetType().Namespace}.Configuration.editorPage.html",
+            DisplayName = "Menu Editor",
+            EnableInMainMenu = true,
+            MenuSection = "server",
+            MenuIcon = "edit",
         }
     ];
 }

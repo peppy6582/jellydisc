@@ -23,6 +23,12 @@
     var VIDEO_ID = 'discMenusVideo';
     var BUTTON_ID = 'discMenusButton';
 
+    // Preview mode (the editor's live preview, in an iframe): the editor hands this script a menu
+    // instead of the script watching jellyfin-web, and nothing here ever touches the real session:
+    // no playback, no native alerts, and the menu can't close itself. Starts muted.
+    var PREVIEW = window.__discMenusPreview === true;
+    var previewMuted = true;
+
     var currentParentItemId = null;
     var menuDoc = null;
     var menuStack = [];
@@ -117,6 +123,14 @@
     }
 
     function closeOverlay() {
+        if (PREVIEW && menuDoc) {
+            // Esc at the root, or the X: a preview never goes blank, it returns to the main menu.
+            menuStack = [menuDoc.Root];
+            menuPage = {};
+            renderOverlay(currentParentItemId, 'back');
+            return;
+        }
+
         removeVideo();
         stopMusic(400);
         currentSounds = null;
@@ -923,7 +937,7 @@
         }
 
         var trailer = chooseTrailer(background);
-        var muted = background.Muted !== false;
+        var muted = background.Muted !== false || (PREVIEW && previewMuted);
         var poster = safeImage(background.Poster);
         var key = [trailer ? trailer.Kind + ':' + (trailer.VideoId || trailer.ItemId) : 'none', muted, poster].join('|');
         if (videoKey === key && document.getElementById(VIDEO_ID)) {
@@ -1095,6 +1109,10 @@
     }
 
     function syncMusic(spec) {
+        if (PREVIEW && previewMuted) {
+            spec = null;
+        }
+
         var url = spec && spec.Source !== 'none' ? resolveMusicUrl(spec) : null;
         if (!url) {
             stopMusic(600);
@@ -1248,7 +1266,7 @@
     // kind: 'move' | 'select' | 'back'
     function playSound(kind) {
         var s = currentSounds;
-        if (!s) {
+        if (!s || (PREVIEW && previewMuted)) {
             return;
         }
 
@@ -1540,6 +1558,8 @@
             screen.animate(TRANSITIONS[transition.style]('forward')['in'], { duration: transition.ms, easing: 'ease-out' });
         }
 
+        notifyEditor('navigate', { menu: menuKey });
+
         // Like a disc remembering its highlighted button: returning to a menu
         // lands on the entry you left it from (e.g. 'Special Features' after Back).
         var entryEls = screen.querySelectorAll('.discMenuEntry');
@@ -1567,7 +1587,27 @@
         }
     }
 
+    // Tell the editor around the preview what happened inside it (it can't see our state).
+    function notifyEditor(type, data) {
+        if (!PREVIEW || window.parent === window) {
+            return;
+        }
+
+        var message = { source: 'discmenus-preview', type: type };
+        Object.keys(data || {}).forEach(function (k) { message[k] = data[k]; });
+        try {
+            window.parent.postMessage(message, window.location.origin);
+        } catch (e) {
+            // not embedded
+        }
+    }
+
     function playItems(itemIds, parentItemId, startTicks) {
+        if (PREVIEW) {
+            notifyEditor('play', { itemIds: itemIds, startTicks: startTicks || 0 });
+            return;
+        }
+
         var deviceId = ApiClient.deviceId();
         var savedStack = menuStack.slice();
 
@@ -1624,6 +1664,11 @@
     }
 
     function alertUnavailable(message) {
+        if (PREVIEW) {
+            notifyEditor('message', { text: message });
+            return;
+        }
+
         if (window.Dashboard && Dashboard.alert) {
             Dashboard.alert(message);
         } else {
@@ -1760,8 +1805,86 @@
         }
     }
 
-    window.addEventListener('hashchange', checkForMenu);
-    waitForApiClient(checkForMenu);
+    // ---- Preview API (used by the editor page) ------------------------------------
+    // A document the renderer can't draw (no root menu) is ignored, so a bad message can never blank the preview.
+    function previewUsable(doc) {
+        return !!(doc && doc.Menus && doc.Root && doc.Menus[doc.Root]);
+    }
+
+    function previewShow(doc, parentItemId) {
+        if (!previewUsable(doc)) {
+            return;
+        }
+
+        var existing = document.getElementById(OVERLAY_ID);
+        if (existing) {
+            existing.remove();
+            window.removeEventListener('keydown', onKeyDown, true);
+        }
+
+        menuDoc = doc;
+        currentParentItemId = parentItemId || 'preview';
+        virtualMenus = {};
+        menuStack = [doc.Root];
+        lastFocusIndex = {};
+        menuPage = {};
+        preloadBackgrounds(currentParentItemId);
+        renderOverlay(currentParentItemId, 'intro');
+    }
+
+    // Swap in an edited menu without losing where the author is: same menu, same page, no replay of
+    // the intro. If the menu being viewed no longer exists, fall back to the root.
+    function previewUpdate(doc, parentItemId) {
+        if (!previewUsable(doc)) {
+            return;
+        }
+
+        if (!document.getElementById(OVERLAY_ID)) {
+            previewShow(doc, parentItemId);
+            return;
+        }
+
+        menuDoc = doc;
+        if (parentItemId) {
+            currentParentItemId = parentItemId;
+        }
+
+        // Generated screens (scene selection) are rebuilt from the menu, so leave them behind.
+        menuStack = menuStack.filter(function (k) { return !!doc.Menus[k]; });
+        if (menuStack.length === 0 || menuStack[0] !== doc.Root) {
+            menuStack = [doc.Root];
+        }
+
+        virtualMenus = {};
+        preloadBackgrounds(currentParentItemId);
+        renderOverlay(currentParentItemId);
+    }
+
+    function previewGoTo(key) {
+        if (!menuDoc || !menuDoc.Menus[key]) {
+            return;
+        }
+
+        menuStack = key === menuDoc.Root ? [key] : [menuDoc.Root, key];
+        menuPage[key] = 0;
+        delete lastFocusIndex[key];
+        renderOverlay(currentParentItemId);
+    }
+
+    function previewSetMuted(muted) {
+        previewMuted = !!muted;
+        if (menuDoc && document.getElementById(OVERLAY_ID)) {
+            renderOverlay(currentParentItemId);
+        }
+    }
+
+    if (PREVIEW) {
+        window.DiscMenusPreview = { show: previewShow, update: previewUpdate, goTo: previewGoTo, setMuted: previewSetMuted };
+        notifyEditor('ready');
+    } else {
+        window.addEventListener('hashchange', checkForMenu);
+        waitForApiClient(checkForMenu);
+    }
 
     console.log('[Disc Menus] renderer script loaded');
 })();

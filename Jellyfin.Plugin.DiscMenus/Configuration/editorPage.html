@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <title>Menu Editor</title>
+</head>
+<body>
+    <div id="DiscMenusEditorPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-button,emby-select">
+        <div data-role="content">
+            <div class="content-primary" style="max-width:none">
+                <style>
+                    .discEdBar { display: flex; flex-wrap: wrap; gap: 0.75em; align-items: center; margin: 1em 0; }
+                    .discEdBar .discEdFileWrap { flex: 1 1 18em; min-width: 12em; }
+                    .discEdStatus { opacity: 0.85; }
+                    .discEdStatus.error { color: #e55; opacity: 1; }
+                    .discEdStatus.ok { color: #5c5; opacity: 1; }
+                    .discEdBody { display: flex; flex-wrap: wrap; gap: 1.25em; align-items: flex-start; }
+                    .discEdPane { flex: 1 1 28em; min-width: 0; }
+                    #discEdText {
+                        width: 100%; box-sizing: border-box; min-height: 34em; resize: vertical;
+                        font-family: ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 0.85em; line-height: 1.45;
+                        tab-size: 2; white-space: pre; overflow: auto; color: inherit;
+                        background: rgba(128, 128, 128, 0.12); border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; padding: 0.6em;
+                    }
+                    .discEdErrors { margin: 0.5em 0; }
+                    .discEdErrors ul { margin: 0.3em 0 0 1.2em; padding: 0; }
+                    .discEdErrors li { margin: 0.2em 0; }
+                    .discEdErrors .title { color: #e55; font-weight: 600; }
+                    .discEdErrors button.line { background: none; border: none; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
+                    .discEdConflict { margin: 0.5em 0; padding: 0.75em; border: 1px solid #e90; border-radius: 4px; }
+                    .discEdPreviewBar { display: flex; flex-wrap: wrap; gap: 0.75em; align-items: center; margin-bottom: 0.5em; }
+                    .discEdPreviewBar .grow { flex: 1 1 12em; min-width: 10em; }
+                    #discEdStage { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; overflow: hidden; border-radius: 4px; }
+                    #discEdFrame { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; background: #000; }
+                    #discEdNote { margin-top: 0.5em; }
+                </style>
+
+                <h2>Menu Editor</h2>
+                <p class="fieldDescription">
+                    Edit a menu file and watch it update in the live preview. The preview is the real viewer, so
+                    clicks, remote keys, sounds and transitions all work, but nothing it plays reaches your own
+                    session. Saving keeps a backup of the previous version and refuses menus that wouldn't load.
+                </p>
+
+                <div class="discEdBar">
+                    <div class="discEdFileWrap">
+                        <select id="discEdFile" is="emby-select" label="Menu file"></select>
+                    </div>
+                    <button id="discEdSave" is="emby-button" type="button" class="raised button-submit"><span>Save</span></button>
+                    <button id="discEdReload" is="emby-button" type="button" class="raised"><span>Reload</span></button>
+                    <span id="discEdStatus" class="discEdStatus" role="status"></span>
+                </div>
+
+                <div class="discEdBody">
+                    <div class="discEdPane">
+                        <textarea id="discEdText" spellcheck="false" wrap="off" aria-label="Menu JSON" disabled></textarea>
+                        <div id="discEdErrors" class="discEdErrors" role="alert"></div>
+                        <div id="discEdConflict" class="discEdConflict" hidden>
+                            <div id="discEdConflictText"></div>
+                            <button id="discEdLoadTheirs" is="emby-button" type="button" class="raised"><span>Load the server's version</span></button>
+                            <button id="discEdOverwrite" is="emby-button" type="button" class="raised"><span>Overwrite with mine</span></button>
+                        </div>
+                    </div>
+                    <div class="discEdPane">
+                        <div class="discEdPreviewBar">
+                            <div class="grow"><select id="discEdMenu" is="emby-select" label="Show menu"></select></div>
+                            <button id="discEdMute" is="emby-button" type="button" class="raised"><span>Sound off</span></button>
+                        </div>
+                        <div id="discEdStage"><iframe id="discEdFrame" title="Live preview of the menu"></iframe></div>
+                        <div id="discEdNote" class="fieldDescription"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script type="text/javascript">
+        (function () {
+            var page = document.querySelector('#DiscMenusEditorPage');
+            var DELAY = typeof window.__discMenusEditorDelay === 'number' ? window.__discMenusEditorDelay : 500;
+            var STATE_LABELS = {
+                bound: 'bound', pending: 'waiting for its title', ambiguous: 'needs review',
+                conflict: 'not used', invalid: "can't be loaded"
+            };
+
+            function $(id) {
+                return page.querySelector('#' + id);
+            }
+
+            var el = {
+                file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
+                text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
+                conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
+                menu: $('discEdMenu'), mute: $('discEdMute'), stage: $('discEdStage'), frame: $('discEdFrame'), note: $('discEdNote')
+            };
+
+            var state = {
+                file: null, version: null, loadedText: '', loadedRevision: null, files: [],
+                lastGood: null, shownOnce: false, seq: 0, timer: null, muted: true, loadSeq: 0,
+                errorSource: null // who produced the errors on screen: 'preview' or 'save'
+            };
+
+            // ---- small helpers -------------------------------------------------------
+            function setStatus(text, kind) {
+                el.status.textContent = text || '';
+                el.status.className = 'discEdStatus' + (kind ? ' ' + kind : '');
+            }
+
+            function isDirty() {
+                return state.file !== null && el.text.value !== state.loadedText;
+            }
+
+            function refreshDirtyStatus() {
+                if (!state.file) {
+                    return;
+                }
+
+                setStatus(isDirty() ? 'Unsaved changes' : 'Saved', isDirty() ? '' : 'ok');
+            }
+
+            // One result shape for every call: {ok, status, data}. A failed call's body is read
+            // for its message (the apiclient rejects with the fetch Response).
+            function callApi(method, path, query, body) {
+                var request = { type: method, url: ApiClient.getUrl(path, query || {}), dataType: 'json' };
+                if (body !== undefined) {
+                    request.data = body;
+                    request.contentType = 'text/plain';
+                }
+
+                return ApiClient.ajax(request).then(function (data) {
+                    return { ok: true, status: 200, data: data };
+                }, function (res) {
+                    if (res && typeof res.json === 'function') {
+                        return res.json().then(function (data) {
+                            return { ok: false, status: res.status, data: data };
+                        }, function () {
+                            return { ok: false, status: res.status, data: null };
+                        });
+                    }
+
+                    return { ok: false, status: 0, data: null };
+                });
+            }
+
+            function revisionOf(text) {
+                var m = /"revision"\s*:\s*(\d+)/.exec(text);
+                return m ? Number(m[1]) : null;
+            }
+
+            // ---- errors ----------------------------------------------------------------
+            function clearErrors() {
+                el.errors.textContent = '';
+                state.errorSource = null;
+            }
+
+            function jumpToLine(line) {
+                var lines = el.text.value.split('\n');
+                var start = 0;
+                for (var i = 0; i < line - 1 && i < lines.length; i++) {
+                    start += lines[i].length + 1;
+                }
+
+                el.text.focus();
+                el.text.setSelectionRange(start, start + (lines[line - 1] || '').length);
+                var lineHeight = parseFloat(window.getComputedStyle(el.text).lineHeight) || 18;
+                el.text.scrollTop = Math.max(0, (line - 3) * lineHeight);
+            }
+
+            // source: 'preview' (the text doesn't load) or 'save' (the server refused to save it). A
+            // refused save's reason stays up until the author edits again, even though the preview of
+            // the same text may be fine.
+            function showErrors(errors, source) {
+                clearErrors();
+                state.errorSource = source;
+                if (!errors || !errors.length) {
+                    return;
+                }
+
+                var title = document.createElement('div');
+                title.className = 'title';
+                title.textContent = errors.length === 1 ? 'One problem to fix:' : errors.length + ' problems to fix:';
+                var list = document.createElement('ul');
+                errors.forEach(function (e) {
+                    var li = document.createElement('li');
+                    if (e.Line) {
+                        var b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'line';
+                        b.textContent = 'Line ' + e.Line + (e.Column ? ', column ' + e.Column : '');
+                        b.addEventListener('click', function () { jumpToLine(e.Line); });
+                        li.appendChild(b);
+                        li.appendChild(document.createTextNode(': '));
+                    }
+
+                    li.appendChild(document.createTextNode(e.Message || ''));
+                    list.appendChild(li);
+                });
+                el.errors.appendChild(title);
+                el.errors.appendChild(list);
+            }
+
+            // ---- the file list -----------------------------------------------------
+            function describe(f) {
+                return f.File + (f.State ? ' - ' + (STATE_LABELS[f.State] || f.State) : '');
+            }
+
+            function fillFileList(selected) {
+                el.file.textContent = '';
+                state.files.forEach(function (f) {
+                    var o = document.createElement('option');
+                    o.value = f.File;
+                    o.textContent = describe(f);
+                    if (f.File === selected) {
+                        o.selected = true;
+                    }
+
+                    el.file.appendChild(o);
+                });
+            }
+
+            function loadFiles(thenOpen) {
+                return callApi('GET', 'DiscMenus/Editor/Files').then(function (r) {
+                    if (!r.ok) {
+                        setStatus('Could not list the menu files. See the server log.', 'error');
+                        return;
+                    }
+
+                    state.files = r.data || [];
+                    fillFileList(state.file);
+                    if (state.files.length === 0) {
+                        el.text.disabled = true;
+                        setStatus('No menu files yet. Add one to the menus folder (or build a draft with POST /DiscMenus/Draft/{itemId}).');
+                        return;
+                    }
+
+                    if (thenOpen && !state.file) {
+                        openFile(state.files[0].File, true);
+                    }
+                });
+            }
+
+            // ---- opening / reloading ---------------------------------------------------
+            function discardOk() {
+                return !isDirty() || window.confirm('You have unsaved changes. Discard them?');
+            }
+
+            function hideConflict() {
+                el.conflict.hidden = true;
+            }
+
+            function openFile(name, force) {
+                if (!force && !discardOk()) {
+                    fillFileList(state.file); // put the picker back
+                    return Promise.resolve();
+                }
+
+                var mine = ++state.loadSeq;
+                setStatus('Loading…');
+                return callApi('GET', 'DiscMenus/Editor/File', { name: name }).then(function (r) {
+                    if (mine !== state.loadSeq) {
+                        return;
+                    }
+
+                    if (!r.ok) {
+                        setStatus('Could not open that file.', 'error');
+                        fillFileList(state.file);
+                        return;
+                    }
+
+                    state.file = name;
+                    state.version = r.data.Version;
+                    state.loadedText = r.data.Json;
+                    state.loadedRevision = revisionOf(r.data.Json);
+                    el.text.value = r.data.Json;
+                    el.text.disabled = false;
+                    state.lastGood = null;
+                    state.shownOnce = false;
+                    hideConflict();
+                    clearErrors();
+                    fillFileList(name);
+                    setStatus('Saved', 'ok');
+                    schedulePreview(0);
+                });
+            }
+
+            // ---- live preview ---------------------------------------------------------
+            function fillMenuPicker(doc, current) {
+                var keys = Object.keys(doc.Menus || {});
+                el.menu.textContent = '';
+                keys.forEach(function (k) {
+                    var o = document.createElement('option');
+                    o.value = k;
+                    o.textContent = k + (doc.Menus[k].Title ? ' - ' + doc.Menus[k].Title : '');
+                    el.menu.appendChild(o);
+                });
+                if (current && keys.indexOf(current) >= 0) {
+                    el.menu.value = current;
+                }
+            }
+
+            function describeBinding(result) {
+                var file = state.files.filter(function (f) { return f.File === state.file; })[0];
+                if (result.Bound) {
+                    return 'Previewing with the real extras, chapters and trailers of "' + (result.ItemName || 'the bound title') + '".';
+                }
+
+                var why = file && file.State && file.State !== 'bound'
+                    ? ' (this menu is ' + (STATE_LABELS[file.State] || file.State) + ')'
+                    : '';
+                return "This menu isn't linked to a library title" + why + ', so extras can\'t play in the preview and chapters, trailers and theme songs are empty.';
+            }
+
+            function pushToFrame() {
+                var win = el.frame.contentWindow;
+                if (!win || !win.DiscMenusPreview || !state.lastGood) {
+                    return;
+                }
+
+                var doc = state.lastGood.Document;
+                var parent = state.lastGood.ParentItemId || null;
+                win.DiscMenusPreview.setMuted(state.muted);
+                if (!state.shownOnce) {
+                    win.DiscMenusPreview.show(doc, parent);
+                    state.shownOnce = true;
+                } else {
+                    win.DiscMenusPreview.update(doc, parent);
+                }
+            }
+
+            function schedulePreview(delay) {
+                clearTimeout(state.timer);
+                state.timer = setTimeout(runPreview, delay == null ? DELAY : delay);
+            }
+
+            function runPreview() {
+                if (!state.file) {
+                    return;
+                }
+
+                var mine = ++state.seq;
+                callApi('POST', 'DiscMenus/Editor/Preview', { file: state.file }, el.text.value).then(function (r) {
+                    if (mine !== state.seq) {
+                        return; // a newer edit superseded this answer
+                    }
+
+                    if (r.ok) {
+                        if (state.errorSource === 'preview') {
+                            clearErrors();
+                        }
+
+                        state.lastGood = r.data;
+                        fillMenuPicker(r.data.Document, el.menu.value);
+                        el.note.textContent = describeBinding(r.data);
+                        pushToFrame();
+                    } else if (r.status === 422 && r.data && r.data.Errors) {
+                        showErrors(r.data.Errors, 'preview');
+                        el.note.textContent = 'The preview shows the last version that was valid.';
+                    } else {
+                        el.note.textContent = 'The preview could not be updated. See the server log.';
+                    }
+                });
+            }
+
+            function fitStage() {
+                var scale = el.stage.clientWidth / 1920;
+                if (scale > 0) {
+                    el.frame.style.transform = 'scale(' + scale + ')';
+                }
+            }
+
+            function onFrameMessage(e) {
+                if (e.origin !== window.location.origin || e.source !== el.frame.contentWindow) {
+                    return;
+                }
+
+                var m = e.data;
+                if (!m || m.source !== 'discmenus-preview') {
+                    return;
+                }
+
+                if (m.type === 'ready') {
+                    pushToFrame();
+                } else if (m.type === 'navigate') {
+                    if (m.menu && Array.prototype.some.call(el.menu.options, function (o) { return o.value === m.menu; })) {
+                        el.menu.value = m.menu;
+                    }
+                } else if (m.type === 'play') {
+                    el.note.textContent = 'In a real menu this would start playing' +
+                        (m.startTicks ? ' from ' + Math.floor(m.startTicks / 10000000) + 's in' : '') + '. (The preview never plays anything.)';
+                } else if (m.type === 'message') {
+                    el.note.textContent = String(m.text || '');
+                }
+            }
+
+            // ---- saving ----------------------------------------------------------------
+            function bumpRevision() {
+                // The schema asks for a higher revision whenever a menu changes; do it for the author.
+                var text = el.text.value;
+                var current = revisionOf(text);
+                if (text !== state.loadedText && current !== null && state.loadedRevision !== null && current <= state.loadedRevision) {
+                    el.text.value = text.replace(/("revision"\s*:\s*)\d+/, '$1' + (state.loadedRevision + 1));
+                }
+            }
+
+            function showConflict() {
+                el.conflictText.textContent = 'This file changed on the server since you opened it, so nothing was saved.';
+                el.conflict.hidden = false;
+                setStatus('Not saved: the file changed on the server', 'error');
+            }
+
+            function doSave(version) {
+                setStatus('Saving…');
+                return callApi('PUT', 'DiscMenus/Editor/File', { name: state.file, version: version }, el.text.value).then(function (r) {
+                    if (r.ok) {
+                        state.version = r.data.Version;
+                        state.loadedText = el.text.value;
+                        state.loadedRevision = revisionOf(el.text.value);
+                        hideConflict();
+                        clearErrors();
+                        setStatus('Saved', 'ok');
+                        loadFiles(false);
+                    } else if (r.status === 409) {
+                        state.serverVersion = r.data && r.data.CurrentVersion;
+                        showConflict();
+                    } else if (r.status === 422 && r.data && r.data.Errors) {
+                        showErrors(r.data.Errors, 'save');
+                        setStatus('Not saved: fix the problems first', 'error');
+                    } else {
+                        setStatus('Save failed. See the server log.', 'error');
+                    }
+                });
+            }
+
+            function save() {
+                if (!state.file) {
+                    return Promise.resolve();
+                }
+
+                if (!isDirty()) {
+                    setStatus('Nothing to save', 'ok');
+                    return Promise.resolve();
+                }
+
+                bumpRevision();
+                return doSave(state.version);
+            }
+
+            // ---- wiring (each visit builds a fresh page, so everything is attached here) ----
+            el.text.addEventListener('input', function () {
+                if (state.errorSource === 'save') {
+                    clearErrors();
+                }
+
+                refreshDirtyStatus();
+                schedulePreview();
+            });
+
+            el.text.addEventListener('keydown', function (e) {
+                if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+                    e.preventDefault();
+                    var s = el.text.selectionStart;
+                    el.text.value = el.text.value.slice(0, s) + '  ' + el.text.value.slice(el.text.selectionEnd);
+                    el.text.selectionStart = el.text.selectionEnd = s + 2;
+                    el.text.dispatchEvent(new Event('input'));
+                } else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                    e.preventDefault();
+                    save();
+                }
+            });
+
+            el.file.addEventListener('change', function () {
+                openFile(el.file.value, false);
+            });
+
+            el.save.addEventListener('click', function () { save(); });
+            el.reload.addEventListener('click', function () {
+                if (state.file && discardOk()) {
+                    openFile(state.file, true);
+                }
+            });
+
+            el.loadTheirs.addEventListener('click', function () { openFile(state.file, true); });
+            el.overwrite.addEventListener('click', function () {
+                if (state.serverVersion) {
+                    doSave(state.serverVersion);
+                }
+            });
+
+            el.menu.addEventListener('change', function () {
+                var win = el.frame.contentWindow;
+                if (win && win.DiscMenusPreview) {
+                    win.DiscMenusPreview.goTo(el.menu.value);
+                }
+            });
+
+            el.mute.addEventListener('click', function () {
+                state.muted = !state.muted;
+                el.mute.querySelector('span').textContent = state.muted ? 'Sound off' : 'Sound on';
+                var win = el.frame.contentWindow;
+                if (win && win.DiscMenusPreview) {
+                    win.DiscMenusPreview.setMuted(state.muted);
+                }
+            });
+
+            el.frame.addEventListener('load', function () {
+                fitStage();
+                pushToFrame();
+            });
+
+            // These live on window, which outlives the page: replace the previous visit's handlers.
+            if (window.__discMenusEditorMsg) {
+                window.removeEventListener('message', window.__discMenusEditorMsg);
+            }
+
+            window.__discMenusEditorMsg = onFrameMessage;
+            window.addEventListener('message', onFrameMessage);
+            if (window.__discMenusEditorFit) {
+                window.removeEventListener('resize', window.__discMenusEditorFit);
+            }
+
+            window.__discMenusEditorFit = fitStage;
+            window.addEventListener('resize', fitStage);
+            if (typeof ResizeObserver === 'function') {
+                new ResizeObserver(fitStage).observe(el.stage);
+            }
+
+            page.addEventListener('pageshow', function () {
+                if (!el.frame.getAttribute('src')) {
+                    el.frame.src = ApiClient.getUrl('DiscMenus/web/preview.html');
+                }
+
+                fitStage();
+                loadFiles(true);
+            });
+        })();
+        </script>
+    </div>
+</body>
+</html>

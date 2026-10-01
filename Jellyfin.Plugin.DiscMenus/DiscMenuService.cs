@@ -176,6 +176,29 @@ public sealed class DiscMenuService : IDisposable
         return outcome;
     }
 
+    /// <summary>The menu editor's file access, pointed at the current menus folder and the plugin's backup folder.</summary>
+    public MenuFileEditor CreateEditor() => new(MenusPath, AssetsPath, Path.Combine(Plugin.Instance!.DataFolderPath, "backups"));
+
+    /// <summary>Called after the editor writes a file, so the discovery index is rebuilt on next use.</summary>
+    public void NotifyFilesChanged() => InvalidateSnapshot();
+
+    /// <summary>The binding and item a menu file is currently bound to, if it is the one shown for its title.</summary>
+    public BoundTitle? FindBindingFor(string fullMenuPath)
+    {
+        foreach (var (parentId, bound) in GetSnapshot().Bound)
+        {
+            if (string.Equals(bound.MenuPath, fullMenuPath, StringComparison.Ordinal))
+            {
+                return new BoundTitle(parentId, bound.Binding, _libraryManager.GetItemById(parentId)?.Name);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>A library item a menu file is bound to, with that binding's resolved extras.</summary>
+    public sealed record BoundTitle(Guid ParentItemId, BindingDocument Binding, string? ItemName);
+
     /// <summary>Every menu file's discovery status, rebuilding the index first if files changed.</summary>
     public IReadOnlyList<Api.MenuStatus> GetStatuses() => GetSnapshot().Statuses;
 

@@ -164,6 +164,31 @@ rip's, not the disc's).
 Not yet: telling apart several copies of the same title (e.g. a 4K and a 1080p file as separate items)
 beyond reporting them as ambiguous; scoring by edition/format is the planned next step.
 
+## Menu Editor
+
+A **Menu Editor** page sits under the plugin's entry in the Jellyfin dashboard sidebar. Pick a menu file,
+edit its JSON, and watch the live preview update beside it:
+
+- **The preview is the real viewer.** It runs the same renderer in a 1920x1080 frame scaled to fit, so
+  layouts, text sizes, clicks, remote keys, transitions, backgrounds, trailers and scene selection behave
+  exactly as for viewers. A **Show menu** picker jumps to any menu in the file, and follows you as you click
+  through the preview. If the file is bound to a library title the preview uses that title's real extras,
+  chapters and trailers; otherwise it says what it lacks. Anything the menu "plays" is reported ("in a real
+  menu this would start playing...") and never reaches your own session. It starts with sound off.
+- **Errors as you type.** Problems come from the same loader the server uses, with line and column for syntax
+  errors (click to jump there). While the text is invalid the preview keeps the last good version.
+- **Saving is careful.** It writes only existing `*.menu.json` files inside the menus folder; refuses text
+  that wouldn't load, a changed `menuId` (bindings are tied to it) or a lower `revision`; bumps the revision
+  for you when you changed something; keeps the previous version as a timestamped backup (newest 25 per file,
+  in the plugin's data folder); and checks the file hasn't changed on disk since you opened it, offering to
+  load the server's version or overwrite if it has. Ctrl+S saves.
+- **Admin API** (all admin-only): `GET /DiscMenus/Editor/Files`, `GET /DiscMenus/Editor/File?name=`,
+  `PUT /DiscMenus/Editor/File?name=&version=` (body = the menu text), `POST /DiscMenus/Editor/Preview?file=`
+  (body = the menu text; returns exactly what the player endpoint would serve for it).
+
+Not in the editor yet: forms for editing properties, dragging buttons into place, uploading art or audio, and
+creating a menu from a title (use `POST /DiscMenus/Draft/{itemId}`).
+
 ## Matching
 Extras are matched by `type` (Jellyfin ExtraType) + `durationSec` (± `toleranceSec`),
 with `ordinal` as a tiebreaker, then manual linking. Never by filename.

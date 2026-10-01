@@ -18,7 +18,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration/configPage.html" />
+    <EmbeddedResource Include="Configuration/editorPage.html" />
     <EmbeddedResource Include="Web/discmenus.js" />
+    <EmbeddedResource Include="Web/preview.html" />
   </ItemGroup>
 
 </Project>
