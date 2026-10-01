@@ -14,8 +14,6 @@
 // details page. After playback stops the menu reopens where it was left.
 //
 // KNOWN LIMITATIONS:
-// - "chapters" (scene selection) isn't implemented - no chapter data is
-//   fetched by this plugin yet.
 // - background.source "tmdb"/"fanart" aren't implemented - falls back to a
 //   plain dark background. Only "jellyfin" (the parent item's own images)
 //   and "color" work.
@@ -30,6 +28,7 @@
     var menuDoc = null;
     var menuStack = [];
     var menuPage = {};
+    var virtualMenus = {};
 
     function getItemIdFromHash() {
         var hash = window.location.hash || '';
@@ -544,8 +543,23 @@
 
         var arrow = null;
         var img = null;
+        // Chapter thumbnail URL is built by this script from the server's own
+        // chapter-image endpoint (never from menu JSON), so it is trusted here.
+        var thumb = typeof entry.ThumbUrl === 'string' ? entry.ThumbUrl : null;
 
-        if (image) {
+        if (thumb) {
+            btn.style.cssText += 'display:flex;flex-direction:column;align-items:stretch;padding:0.3em;gap:0.3em;font-size:1.6vh;';
+            btn.style.background = 'rgba(0,0,0,0.35)';
+            img = document.createElement('img');
+            img.src = thumb;
+            img.alt = '';
+            img.draggable = false;
+            img.style.cssText = 'display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:0.3em;background:#000;';
+            btn.appendChild(img);
+            var caption = document.createElement('span');
+            caption.textContent = entry.Label + (entry.Sub ? ' · ' + entry.Sub : '');
+            btn.appendChild(caption);
+        } else if (image) {
             // Artwork button: the label is only an accessible name, not drawn.
             btn.title = entry.Label;
             btn.style.padding = '0';
@@ -568,12 +582,26 @@
             }
 
             btn.appendChild(document.createTextNode(entry.Label));
+            if (entry.Sub) {
+                // Secondary line (e.g. a chapter's start time), smaller and dimmer.
+                var sub = document.createElement('span');
+                sub.textContent = entry.Sub;
+                sub.style.cssText = 'display:block;font-size:0.65em;opacity:0.75;letter-spacing:0;';
+                btn.appendChild(sub);
+            }
+
             if (style === 'frame') {
                 btn.style.background = 'rgba(0,0,0,0.5)';
             }
         }
 
         function highlight(on) {
+            if (thumb) {
+                btn.style.borderColor = on ? accent : 'transparent';
+                btn.style.background = on ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.35)';
+                return;
+            }
+
             if (img) {
                 if (imageFocus) {
                     img.src = on ? imageFocus : image;
@@ -630,7 +658,8 @@
     // pinned to every page (like a disc's Return button). Navigation buttons
     // take cells too, so a page's capacity shrinks by Back, Previous (after the
     // first page) and More (when more follows). Pure function: easy to test.
-    function paginate(entries, slots) {
+    function paginate(entries, slots, maxPerPage) {
+        var maxPer = maxPerPage > 0 ? maxPerPage : Infinity;
         // The first 'back' and the first 'home' are pinned, in entry order; any
         // further ones are ordinary entries. That caps the pinned buttons at
         // Back + Home + Previous + More = 4, so a grid of (pinned + 3) cells
@@ -645,12 +674,13 @@
         for (;;) {
             var navBase = backs.length + (pages.length > 0 ? 1 : 0);
             var left = content.length - taken;
-            if (left <= slots - navBase) {
+            var room = slots - navBase;
+            if (left <= Math.min(room, maxPer)) {
                 pages.push({ items: content.slice(taken), backs: backs, prev: pages.length > 0, more: false });
                 return pages;
             }
 
-            var capacity = Math.max(1, slots - navBase - 1);
+            var capacity = Math.min(Math.max(1, room - 1), maxPer);
             pages.push({ items: content.slice(taken, taken + capacity), backs: backs, prev: pages.length > 0, more: true });
             taken += capacity;
         }
@@ -683,7 +713,7 @@
         }
 
         var slots = flow.Columns * flow.Rows;
-        var pages = paginate(menu.Entries, slots);
+        var pages = paginate(menu.Entries, slots, menu.MaxPerPage);
         var page = Math.min(menuPage[menuKey] || 0, pages.length - 1);
         menuPage[menuKey] = page;
         var p = pages[page];
@@ -699,7 +729,7 @@
 
         var placed = [];
         p.items.forEach(function (e, i) {
-            placed.push(Object.assign({}, e, { Position: cellPosition(flow, i, !!e.Image) }));
+            placed.push(Object.assign({}, e, { Position: cellPosition(flow, i, !!(e.Image || e.ThumbUrl)) }));
         });
         // Navigation sits in the last cells of the grid, in a stable order.
         nav.forEach(function (e, j) {
@@ -916,7 +946,7 @@
 
     function renderOverlay(parentItemId) {
         var menuKey = menuStack[menuStack.length - 1];
-        var menu = menuDoc.Menus[menuKey];
+        var menu = menuDoc.Menus[menuKey] || virtualMenus[menuKey];
         if (!menu) {
             return;
         }
@@ -1055,7 +1085,7 @@
         }
     }
 
-    function playItems(itemIds, parentItemId) {
+    function playItems(itemIds, parentItemId, startTicks) {
         var deviceId = ApiClient.deviceId();
         var savedStack = menuStack.slice();
 
@@ -1070,6 +1100,7 @@
                 url: ApiClient.getUrl('Sessions/' + session.Id + '/Playing', {
                     PlayCommand: 'PlayNow',
                     ItemIds: itemIds.join(','),
+                    StartPositionTicks: startTicks > 0 ? Math.floor(startTicks) : undefined,
                 }),
             }).then(function () {
                 closeOverlay();
@@ -1118,10 +1149,84 @@
         }
     }
 
+    function formatTicks(ticks) {
+        var total = Math.floor((ticks || 0) / 10000000);
+        var h = Math.floor(total / 3600);
+        var m = Math.floor((total % 3600) / 60);
+        var sec = total % 60;
+        return (h > 0 ? h + ':' + (m < 10 ? '0' : '') : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+    }
+
+    // Build and open a scene-selection screen from the feature's chapters. It is
+    // an ordinary flow menu (so it gets paging, Back/Home and remote navigation
+    // for free) generated at activation time; an optional styling menu supplies
+    // its title/background/theme/layout. Kept in virtualMenus, not the loaded
+    // document, because that document is re-fetched after playback.
+    function openSceneSelection(entry, parentItemId) {
+        var chapters = (menuDoc && menuDoc.Chapters) || [];
+        if (chapters.length === 0) {
+            alertUnavailable("This title has no chapter markers.");
+            return;
+        }
+
+        var base = entry.Menu ? menuDoc.Menus[entry.Menu] : null;
+        var perPage = entry.PerPage || 6;
+        var items = chapters.map(function (c, i) {
+            var thumb = null;
+            if (c.HasImage && window.ApiClient) {
+                thumb = ApiClient.getUrl('Items/' + parentItemId + '/Images/Chapter/' + c.Index, {
+                    maxWidth: 480,
+                    tag: c.ImageStamp != null ? c.ImageStamp : undefined,
+                });
+            }
+
+            return {
+                Action: 'playChapter',
+                Label: c.Name || 'Chapter ' + (i + 1),
+                Sub: formatTicks(c.StartTicks),
+                StartTicks: c.StartTicks,
+                ThumbUrl: thumb,
+            };
+        });
+
+        var layout = Object.assign({}, base && base.Layout);
+        if (!layout.Flow && !(menuDoc.Layout && menuDoc.Layout.Flow)) {
+            // Default grid: perPage thumbnails plus a navigation row's worth of cells.
+            var slots = perPage + 3;
+            var columns = perPage <= 3 ? Math.max(1, perPage) : perPage <= 8 ? 3 : 4;
+            layout.Flow = {
+                Region: { X: 50, Y: 52, W: 86, H: 68, Anchor: 'center' },
+                Columns: columns,
+                Rows: Math.ceil(slots / columns),
+            };
+        }
+
+        var key = '@chapters:' + (entry.Menu || '');
+        virtualMenus[key] = Object.assign({}, base || {}, {
+            Title: (base && base.Title) || entry.Label,
+            Layout: layout,
+            Entries: items.concat(base ? base.Entries : [{ Action: 'back', Label: 'Back' }]),
+            MaxPerPage: perPage,
+        });
+        menuStack.push(key);
+        menuPage[key] = 0;
+        delete lastFocusIndex[key];
+        renderOverlay(parentItemId);
+    }
+
+    function startTicksForChapter(number) {
+        var chapters = (menuDoc && menuDoc.Chapters) || [];
+        var c = number > 0 ? chapters[number - 1] : null;
+        return c ? c.StartTicks : 0;
+    }
+
     function handleEntry(entry, parentItemId) {
         switch (entry.Action) {
             case 'playFeature':
-                playItems([parentItemId], parentItemId);
+                playItems([parentItemId], parentItemId, startTicksForChapter(entry.StartChapter));
+                break;
+            case 'playChapter':
+                playItems([parentItemId], parentItemId, entry.StartTicks);
                 break;
             case 'playExtra':
                 if (entry.ItemId) {
@@ -1166,7 +1271,7 @@
                 renderOverlay(parentItemId);
                 break;
             case 'chapters':
-                alertUnavailable("Scene selection isn't implemented yet.");
+                openSceneSelection(entry, parentItemId);
                 break;
             default:
                 break;

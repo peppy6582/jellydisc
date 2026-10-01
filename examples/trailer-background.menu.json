@@ -7,11 +7,7 @@
     "language": "en-US",
     "notes": "EXAMPLE 3 - trailer video background. The title's own trailer (local file first, then the YouTube trailers Jellyfin has stored) loops muted behind a translucent bar; the bar holds the buttons. Special Features uses an automatic grid that pages with More/Previous, with Home pinned on every page. Add a 'poster' (https URL or asset: image) to background to show a picture until the video starts. Extras are illustrative."
   },
-  "match": {
-    "itemType": "Movie",
-    "providerIds": { "Tmdb": "335984", "Imdb": "tt1856101" },
-    "release": { "edition": "Example", "format": "UHD", "region": "A", "year": 2018 }
-  },
+  "match": { "itemType": "Movie", "providerIds": {"Tmdb": "335984", "Imdb": "tt1856101"}, "release": {"edition": "Example", "format": "UHD", "region": "A", "year": 2018} },
   "background": { "source": "trailer", "trailerIndex": 0, "muted": true, "dim": 0.35 },
   "theme": {
     "id": "cinema",
@@ -53,14 +49,16 @@
     "main": {
       "title": "Main Menu",
       "entries": [
-        { "action": "playFeature", "label": "Play Movie", "position": { "x": 22, "y": 88, "w": 24, "anchor": "center" } },
-        { "action": "chapters", "label": "Scene Selection", "perPage": 6, "position": { "x": 50, "y": 88, "w": 24, "anchor": "center" } },
-        { "action": "submenu", "label": "Special Features", "menu": "features", "position": { "x": 78, "y": 88, "w": 24, "anchor": "center" } }
+        { "action": "playFeature", "label": "Play Movie", "position": {"x": 22, "y": 88, "w": 24, "anchor": "center"} },
+        { "action": "chapters", "label": "Scene Selection", "perPage": 6, "position": {"x": 50, "y": 88, "w": 24, "anchor": "center"} },
+        { "action": "submenu", "label": "Special Features", "menu": "features", "position": {"x": 78, "y": 88, "w": 24, "anchor": "center"} }
       ]
     },
     "features": {
       "title": "Special Features",
-      "layout": { "flow": { "region": { "x": 50, "y": 88, "w": 86, "h": 9, "anchor": "center" }, "columns": 6, "rows": 1 } },
+      "layout": {
+        "flow": { "region": {"x": 50, "y": 88, "w": 86, "h": 9, "anchor": "center"}, "columns": 6, "rows": 1 }
+      },
       "entries": [
         { "action": "playExtra", "label": "Making Of", "extra": "making-of" },
         { "action": "playExtra", "label": "Visual Effects", "extra": "vfx" },

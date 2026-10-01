@@ -18,10 +18,13 @@ public sealed class DiscMenuService
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<DiscMenuService> _logger;
 
-    public DiscMenuService(ILibraryManager libraryManager, ILogger<DiscMenuService> logger)
+    private readonly IServiceProvider _services;
+
+    public DiscMenuService(ILibraryManager libraryManager, ILogger<DiscMenuService> logger, IServiceProvider services)
     {
         _libraryManager = libraryManager;
         _logger = logger;
+        _services = services;
     }
 
     /// <summary>Menu art lives in an "assets" folder beside the menu/binding files (never scanned as menus).</summary>
@@ -167,6 +170,32 @@ public sealed class DiscMenuService
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// The feature's chapters, in order. Resolved lazily from the server's chapter manager so that
+    /// if it were ever unavailable the menu still works, just without scene selection data.
+    /// </summary>
+    public IReadOnlyList<Api.RenderableChapter> GetChapters(Guid parentItemId)
+    {
+        var manager = _services.GetService(typeof(MediaBrowser.Controller.Chapters.IChapterManager))
+            as MediaBrowser.Controller.Chapters.IChapterManager;
+        if (manager is null)
+        {
+            _logger.LogWarning("Chapter manager unavailable; scene selection will have no chapters");
+            return Array.Empty<Api.RenderableChapter>();
+        }
+
+        return manager.GetChapters(parentItemId)
+            .Select((c, i) => new Api.RenderableChapter
+            {
+                Index = i,
+                Name = c.Name,
+                StartTicks = c.StartPositionTicks,
+                HasImage = !string.IsNullOrEmpty(c.ImagePath),
+                ImageStamp = string.IsNullOrEmpty(c.ImagePath) ? null : c.ImageDateModified.Ticks,
+            })
+            .ToList();
     }
 
     /// <summary>

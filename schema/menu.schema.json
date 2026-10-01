@@ -432,7 +432,11 @@
             "style": { "$ref": "#/$defs/buttonStyle" },
             "image": { "$ref": "#/$defs/imageRef" },
             "imageFocus": { "$ref": "#/$defs/imageRef" },
-            "perPage": { "type": "integer", "minimum": 1, "maximum": 24 }
+            "perPage": { "description": "Most chapter buttons per page (default 6).", "type": "integer", "minimum": 1, "maximum": 24 },
+            "menu": {
+              "description": "Optional key of a menu that styles the generated scene-selection screen: its title, background, theme and layout are used, the chapter buttons are placed first, and its own entries (typically just Back/Home) follow.",
+              "$ref": "#/$defs/key"
+            }
           }
         },
         {

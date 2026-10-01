@@ -26,7 +26,30 @@ public sealed class RenderableMenuDocument
     /// </summary>
     public List<RenderableTrailer>? Trailers { get; init; }
 
+    /// <summary>
+    /// The feature's chapters. Only filled when a menu has a "chapters" entry or a playFeature
+    /// with startChapter; chapter numbers in menus are 1-based positions in this list.
+    /// </summary>
+    public List<RenderableChapter>? Chapters { get; init; }
+
     public required Dictionary<string, RenderableMenu> Menus { get; init; }
+}
+
+/// <summary>One chapter of the feature, as the renderer needs it.</summary>
+public sealed class RenderableChapter
+{
+    /// <summary>0-based index (what Jellyfin's chapter image URL uses).</summary>
+    public int Index { get; init; }
+
+    public string? Name { get; init; }
+
+    public long StartTicks { get; init; }
+
+    /// <summary>True if Jellyfin has extracted a thumbnail for this chapter. The path itself is never sent.</summary>
+    public bool HasImage { get; init; }
+
+    /// <summary>Cache-buster for the thumbnail URL (ticks of its modification time).</summary>
+    public long? ImageStamp { get; init; }
 }
 
 /// <summary>One playable trailer: a local file (ItemId) or a YouTube video (VideoId, validated).</summary>

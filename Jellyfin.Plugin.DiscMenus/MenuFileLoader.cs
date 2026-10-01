@@ -305,6 +305,9 @@ public static class MenuFileLoader
                     case SubmenuEntry e when !m.Menus.ContainsKey(e.Menu):
                         errors.Add($"{menuKey}[{i}] unknown menu {e.Menu}");
                         break;
+                    case ChaptersEntry { Menu: { } styleMenu } when !m.Menus.ContainsKey(styleMenu):
+                        errors.Add($"{menuKey}[{i}] unknown menu {styleMenu}");
+                        break;
                 }
             }
         }
@@ -331,6 +334,12 @@ public static class MenuFileLoader
             foreach (var sub in menu.Entries.OfType<SubmenuEntry>())
             {
                 stack.Push(sub.Menu);
+            }
+
+            // A menu that only styles a scene-selection screen is reachable through that entry.
+            foreach (var styled in menu.Entries.OfType<ChaptersEntry>().Where(c => c.Menu is not null))
+            {
+                stack.Push(styled.Menu!);
             }
         }
 

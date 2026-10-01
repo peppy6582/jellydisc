@@ -19,6 +19,7 @@ def semantic(m):
             if a == "playSequence":
                 errs += [f"{mk}[{i}] unknown extra {x}" for x in e["extras"] if x not in extras]
             if a == "submenu" and e["menu"] not in menus: errs.append(f"{mk}[{i}] unknown menu {e['menu']}")
+            if a == "chapters" and e.get("menu") and e["menu"] not in menus: errs.append(f"{mk}[{i}] unknown menu {e['menu']}")
     for mk, menu in menus.items():
         placed = [("position" in e) for e in menu["entries"]]
         flow = menu.get("layout", {}).get("flow") or m.get("layout", {}).get("flow")
@@ -43,7 +44,7 @@ def semantic(m):
         k = stack.pop()
         if k in seen or k not in menus: continue
         seen.add(k)
-        stack += [e["menu"] for e in menus[k]["entries"] if e["action"] == "submenu"]
+        stack += [e["menu"] for e in menus[k]["entries"] if e["action"] == "submenu" or (e["action"] == "chapters" and e.get("menu"))]
     errs += [f"menu '{k}' unreachable from root" for k in menus if k not in seen]
     return errs
 
@@ -100,6 +101,9 @@ neg = {
   "muted not boolean": mut(lambda d: d.update(background={"source":"trailer","muted":"yes"})),
   "home with a menu target": mut(lambda d: d["menus"]["features"]["entries"].append({"action":"home","label":"x","menu":"main"})),
   "back+home need 5 cells": mut(lambda d: (d["menus"]["features"].update(layout={"flow":{"region":{"x":50,"y":50,"w":50,"h":10},"columns":4,"rows":1}}), d["menus"]["features"]["entries"].append({"action":"home","label":"Home"}))),
+  "chapters styling menu missing": mut(lambda d: d["menus"]["main"]["entries"][1].update(menu="nope")),
+  "chapters menu not a key": mut(lambda d: d["menus"]["main"]["entries"][1].update(menu="Bad Key!")),
+  "chapters perPage zero": mut(lambda d: d["menus"]["main"]["entries"][1].update(perPage=0)),
   "bad uuid": mut(lambda d: d.update(menuId="not-a-uuid")),
 }
 ok = True

@@ -91,6 +91,16 @@ keep working unchanged.
   trailers disallow embedding; local trailers only play if the browser can decode the file directly. Captions are always suppressed for background trailers (YouTube's captions are
   unloaded even if the viewer's YouTube account prefers them, and a local file's embedded subtitle tracks are disabled).
 
+- **Scene selection:** a `chapters` entry (`{ "action": "chapters", "label": "Scene Selection", "perPage": 6 }`)
+  opens a screen generated from the feature's chapters: one button per chapter, paged with More /
+  Previous, with Back pinned. Each chapter starts the movie at that chapter. Chapters show Jellyfin's
+  thumbnail when it has extracted chapter images (the "Extract chapter images" task), otherwise the
+  chapter name and start time. With no further settings it uses a built-in 3x3 grid. Add
+  `"menu": "<key>"` to style it with one of your own menus: that menu's title, background, theme and
+  layout are used, the chapters are placed first (at most `perPage` per page), and its own entries
+  (typically `home`/`back`) stay pinned. Use `"layers": []` in that menu's layout to switch off an
+  inherited banner for the screen. A `playFeature` entry can also set `startChapter` (1-based).
+
 **Shareable means no binaries and no code.** Images are never embedded files or paths: an `image` is
 an `https://` URL or a small `data:image/(png|jpeg|webp);base64,` URI (SVG is refused). URLs may not
 contain whitespace, quotes, parentheses or angle brackets. The server and the browser both re-check this,

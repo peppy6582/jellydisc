@@ -56,9 +56,13 @@ public sealed class DiscMenusPlayerController : ControllerBase
             Theme = menu.Theme,
             Layout = menu.Layout,
             Trailers = UsesTrailer(menu) ? _discMenuService.GetTrailers(parentItemId).ToList() : null,
+            Chapters = UsesChapters(menu) ? _discMenuService.GetChapters(parentItemId).ToList() : null,
             Menus = menus,
         });
     }
+
+    private static bool UsesChapters(MenuDocument menu) =>
+        menu.Menus.Values.SelectMany(m => m.Entries).Any(e => e is ChaptersEntry || e is PlayFeatureEntry { StartChapter: not null });
 
     private static bool UsesTrailer(MenuDocument menu) =>
         menu.Background?.Source == BackgroundSource.Trailer
@@ -85,7 +89,7 @@ public sealed class DiscMenusPlayerController : ControllerBase
             ItemIds = e.Extras.Select(k => ResolvedItemId(binding, k)).Where(id => id.HasValue).Select(id => id!.Value).ToList(),
         },
         SubmenuEntry e => new RenderableEntry { Action = e.Action, Label = e.Label, Menu = e.Menu },
-        ChaptersEntry e => new RenderableEntry { Action = e.Action, Label = e.Label, PerPage = e.PerPage },
+        ChaptersEntry e => new RenderableEntry { Action = e.Action, Label = e.Label, PerPage = e.PerPage, Menu = e.Menu },
         BackEntry e => new RenderableEntry { Action = e.Action, Label = e.Label },
         HomeEntry e => new RenderableEntry { Action = e.Action, Label = e.Label },
         _ => throw new NotSupportedException($"Unhandled menu entry type '{entry.GetType()}'."),

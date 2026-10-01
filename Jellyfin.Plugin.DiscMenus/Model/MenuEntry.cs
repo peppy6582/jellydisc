@@ -54,6 +54,9 @@ public sealed class SubmenuEntry : MenuEntry
 public sealed class ChaptersEntry : MenuEntry
 {
     public int? PerPage { get; init; }
+
+    /// <summary>Optional menu key whose title/background/layout style the generated scene screen.</summary>
+    public string? Menu { get; init; }
 }
 
 /// <summary>Jump straight to the root menu (a "Home" / "Main Menu" button).</summary>
