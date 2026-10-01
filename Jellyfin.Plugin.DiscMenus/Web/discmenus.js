@@ -7,13 +7,13 @@
 // "#/details?id=<guid>"), so this watches the native `hashchange` event to
 // know which item's details page is currently showing.
 //
-// KNOWN v1 LIMITATIONS (see README "Web menu renderer" for why):
-// - playbackManager isn't reachable from an externally-injected script (it's
-//   an ES module internal to jellyfin-web's own bundle, not a global). So
-//   "play" actions navigate to the target item's own details page instead of
-//   starting playback directly - the user clicks Jellyfin's own native Play
-//   button there. Not a one-click DVD-menu experience yet.
-// - playSequence plays only the first resolved item, not the whole queue.
+// PLAYBACK: playbackManager isn't reachable from an injected script (it's an
+// ES module internal to jellyfin-web's bundle), so play actions send a
+// PlayNow command to this browser's own session via the Sessions API (see
+// playItems). If that fails they fall back to navigating to the item's
+// details page. After playback stops the menu reopens where it was left.
+//
+// KNOWN LIMITATIONS:
 // - "chapters" (scene selection) isn't implemented - no chapter data is
 //   fetched by this plugin yet.
 // - background.source "tmdb"/"fanart" aren't implemented - falls back to a
@@ -255,6 +255,74 @@
         window.location.hash = '#/details?id=' + itemId;
     }
 
+    // One-click playback via the Sessions API: find this browser's own session
+    // (matched by device id) and send it a PlayNow command - no access to
+    // jellyfin-web's internal playbackManager needed. Falls back to navigating
+    // to the item's details page if anything about that fails.
+    var returnPoll = null;
+
+    function stopReturnPoll() {
+        if (returnPoll) {
+            clearInterval(returnPoll);
+            returnPoll = null;
+        }
+    }
+
+    function playItems(itemIds, parentItemId) {
+        var deviceId = ApiClient.deviceId();
+        var savedStack = menuStack.slice();
+
+        ApiClient.getJSON(ApiClient.getUrl('Sessions', { DeviceId: deviceId })).then(function (sessions) {
+            var session = sessions && sessions[0];
+            if (!session) {
+                throw new Error('no session for this device');
+            }
+
+            return ApiClient.ajax({
+                type: 'POST',
+                url: ApiClient.getUrl('Sessions/' + session.Id + '/Playing', {
+                    PlayCommand: 'PlayNow',
+                    ItemIds: itemIds.join(','),
+                }),
+            }).then(function () {
+                closeOverlay();
+                watchForPlaybackEnd(session.Id, parentItemId, savedStack);
+            });
+        }).catch(function (err) {
+            console.warn('[Disc Menus] Sessions API playback failed, falling back to details page', err);
+            navigateToItem(itemIds[0]);
+        });
+    }
+
+    // Reopen the menu where the user left it once playback stops, like a disc
+    // returning to its menu. Waits for playback to actually start first so the
+    // brief gap before NowPlayingItem appears isn't mistaken for "ended".
+    function watchForPlaybackEnd(sessionId, parentItemId, savedStack) {
+        stopReturnPoll();
+        var started = false;
+        var ticks = 0;
+
+        returnPoll = setInterval(function () {
+            ticks++;
+            ApiClient.getJSON(ApiClient.getUrl('Sessions')).then(function (sessions) {
+                var s = (sessions || []).filter(function (x) { return x.Id === sessionId; })[0];
+                var playing = !!(s && s.NowPlayingItem);
+                if (playing) {
+                    started = true;
+                } else if (started || ticks > 15) {
+                    stopReturnPoll();
+                    if (started) {
+                        window.location.hash = '#/details?id=' + parentItemId;
+                        setTimeout(function () {
+                            menuStack = savedStack;
+                            renderOverlay(parentItemId);
+                        }, 600);
+                    }
+                }
+            });
+        }, 2000);
+    }
+
     function alertUnavailable(message) {
         if (window.Dashboard && Dashboard.alert) {
             Dashboard.alert(message);
@@ -266,20 +334,19 @@
     function handleEntry(entry, parentItemId) {
         switch (entry.Action) {
             case 'playFeature':
-                navigateToItem(parentItemId);
+                playItems([parentItemId], parentItemId);
                 break;
             case 'playExtra':
                 if (entry.ItemId) {
-                    navigateToItem(entry.ItemId);
+                    playItems([entry.ItemId], parentItemId);
                 } else {
                     alertUnavailable("This extra isn't linked to a local file yet.");
                 }
 
                 break;
             case 'playSequence':
-                // Queueing the whole sequence isn't implemented yet - see file header.
                 if (entry.ItemIds && entry.ItemIds.length > 0) {
-                    navigateToItem(entry.ItemIds[0]);
+                    playItems(entry.ItemIds, parentItemId);
                 } else {
                     alertUnavailable("None of these extras are linked to a local file yet.");
                 }

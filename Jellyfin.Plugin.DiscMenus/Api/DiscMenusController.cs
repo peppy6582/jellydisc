@@ -159,6 +159,13 @@ public sealed class DiscMenusController : ControllerBase
             : NotFound($"No extra '{extraKey}' on the menu bound to '{parentItemId}'.");
 
     /// <summary>
+    /// Changes on every build, so the injected script URL changes with it and a
+    /// browser can never keep running a stale cached renderer after an update.
+    /// </summary>
+    private static readonly string ScriptVersion =
+        typeof(DiscMenusController).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+
+    /// <summary>
     /// Called by the "File Transformation" plugin (server-to-server, no Jellyfin
     /// session) to inject the web menu renderer's script tag into jellyfin-web's
     /// index.html. See FileTransformationIntegration.cs for the registration side.
@@ -179,7 +186,7 @@ public sealed class DiscMenusController : ControllerBase
         var insertAt = contents.LastIndexOf(BodyCloseTag, StringComparison.OrdinalIgnoreCase);
         var result = insertAt < 0
             ? contents
-            : contents[..insertAt] + "<script src=\"/DiscMenus/web/discmenus.js\"></script>\n" + contents[insertAt..];
+            : contents[..insertAt] + $"<script src=\"/DiscMenus/web/discmenus.js?v={ScriptVersion}\"></script>\n" + contents[insertAt..];
 
         return Content(result, "text/html");
     }
@@ -194,6 +201,7 @@ public sealed class DiscMenusController : ControllerBase
         using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' not found.");
         using var reader = new StreamReader(stream);
+        Response.Headers.CacheControl = "no-cache";
         return Content(reader.ReadToEnd(), "application/javascript");
     }
 }
