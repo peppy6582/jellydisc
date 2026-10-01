@@ -18,7 +18,28 @@ public sealed class RenderableMenuDocument
 
     public ThemeSpec? Theme { get; init; }
 
+    public MenuLayout? Layout { get; init; }
+
+    /// <summary>
+    /// This item's trailers, local files first then YouTube. Only filled when a background
+    /// uses source=trailer; a background's trailerIndex indexes into this list.
+    /// </summary>
+    public List<RenderableTrailer>? Trailers { get; init; }
+
     public required Dictionary<string, RenderableMenu> Menus { get; init; }
+}
+
+/// <summary>One playable trailer: a local file (ItemId) or a YouTube video (VideoId, validated).</summary>
+public sealed class RenderableTrailer
+{
+    /// <summary>"local" or "youtube".</summary>
+    public required string Kind { get; init; }
+
+    public Guid? ItemId { get; init; }
+
+    public string? VideoId { get; init; }
+
+    public string? Name { get; init; }
 }
 
 public sealed class RenderableMenu

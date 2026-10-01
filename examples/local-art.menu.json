@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "menuId": "5d31d43c-cb6b-4886-93ad-7d2028f4dc00",
+  "revision": 1,
+  "meta": {
+    "author": "example",
+    "language": "en-US",
+    "notes": "EXAMPLE 4 - local artwork. The background and the button banner are image files served from the menus 'assets' folder via asset: references (copy examples/assets/local-art/ into <your menus folder>/assets/local-art/). The shipped images are plain generated placeholders; swap in real art with the same names, or point the references at your own files. Extras are illustrative."
+  },
+  "match": {
+    "itemType": "Movie",
+    "providerIds": { "Tmdb": "155", "Imdb": "tt0468569" },
+    "release": { "edition": "Example", "format": "BluRay", "region": "A", "year": 2008 }
+  },
+  "background": { "source": "image", "image": "asset:local-art/background.webp", "dim": 0 },
+  "theme": {
+    "id": "local-art",
+    "accent": "#c77dff",
+    "align": "center",
+    "textColor": "#dfe9f5",
+    "font": "sans",
+    "fontSize": 2.4,
+    "uppercase": true,
+    "bold": true,
+    "letterSpacing": 0.05
+  },
+  "layout": {
+    "hideTitle": true,
+    "buttonStyle": "text",
+    "layers": [
+      {
+        "type": "image",
+        "image": "asset:local-art/banner.webp",
+        "position": { "x": 50, "y": 95, "w": 86, "h": 20, "anchor": "bottom" },
+        "fit": "contain"
+      }
+    ]
+  },
+  "extras": {
+    "making-of": { "type": "BehindTheScenes", "durationSec": 1320 },
+    "gotham-tour": { "type": "Featurette", "durationSec": 600 },
+    "trailer": { "type": "Trailer", "durationSec": 140, "optional": true },
+    "short": { "type": "Short", "durationSec": 410 }
+  },
+  "root": "main",
+  "menus": {
+    "main": {
+      "title": "Main Menu",
+      "entries": [
+        { "action": "playFeature", "label": "Play Movie", "position": { "x": 24, "y": 85, "w": 22, "anchor": "center" } },
+        { "action": "chapters", "label": "Scene Selection", "perPage": 6, "position": { "x": 50, "y": 85, "w": 22, "anchor": "center" } },
+        { "action": "submenu", "label": "Special Features", "menu": "features", "position": { "x": 76, "y": 85, "w": 22, "anchor": "center" } }
+      ]
+    },
+    "features": {
+      "title": "Special Features",
+      "layout": { "flow": { "region": { "x": 50, "y": 85, "w": 76, "h": 12, "anchor": "center" }, "columns": 5, "rows": 1 } },
+      "entries": [
+        { "action": "playExtra", "label": "Making Of", "extra": "making-of" },
+        { "action": "playExtra", "label": "Tour", "extra": "gotham-tour" },
+        { "action": "playExtra", "label": "Trailer", "extra": "trailer" },
+        { "action": "playExtra", "label": "Short Film", "extra": "short" },
+        { "action": "home", "label": "Home" }
+      ]
+    }
+  }
+}

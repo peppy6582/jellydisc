@@ -170,6 +170,42 @@ public sealed class DiscMenuService
     }
 
     /// <summary>
+    /// Trailers for a parent item, in the order a menu's trailerIndex counts them: local
+    /// trailer files first, then the YouTube trailers Jellyfin has stored in its metadata.
+    /// Non-YouTube remote trailers are skipped (they cannot be embedded safely).
+    /// </summary>
+    public IReadOnlyList<Api.RenderableTrailer> GetTrailers(Guid parentItemId)
+    {
+        var result = new List<Api.RenderableTrailer>();
+        if (_libraryManager.GetItemById(parentItemId) is not { } parent)
+        {
+            return result;
+        }
+
+        // Filtered again in code: don't rely on the query's owner/extra-type semantics alone.
+        var locals = _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            OwnerIds = new[] { parentItemId },
+            ExtraTypes = new[] { ExtraType.Trailer },
+            IncludeExtras = true,
+        });
+        foreach (var item in locals.Where(i => i.ExtraType == ExtraType.Trailer && i.OwnerId == parentItemId))
+        {
+            result.Add(new Api.RenderableTrailer { Kind = "local", ItemId = item.Id, Name = item.Name });
+        }
+
+        foreach (var remote in parent.RemoteTrailers ?? Array.Empty<MediaUrl>())
+        {
+            if (YouTubeLink.TryGetVideoId(remote.Url) is { } videoId)
+            {
+                result.Add(new Api.RenderableTrailer { Kind = "youtube", VideoId = videoId, Name = remote.Name });
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Every local extra under a parent item that has a type and a runtime,
     /// regardless of whether it's already claimed by a binding - the pool an
     /// admin picks from when manually linking an unmatched key.

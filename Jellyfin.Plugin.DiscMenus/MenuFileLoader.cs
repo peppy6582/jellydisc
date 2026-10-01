@@ -112,16 +112,95 @@ public static class MenuFileLoader
         {
             errors.Add($"{where} background image must be an https URL, small data: URI or asset: reference");
         }
+
+        if (b?.Poster is not null && !ImageRef.IsMatch(b.Poster))
+        {
+            errors.Add($"{where} background poster must be an https URL, small data: URI or asset: reference");
+        }
+
+        if (b?.TrailerIndex is < 0 or > 9)
+        {
+            errors.Add($"{where} background trailerIndex must be 0-9");
+        }
     }
 
-    private static void ValidatePresentation(string menuKey, MenuDef menu, List<string> errors)
+    private static void CheckPosition(string where, PositionSpec? p, List<string> errors)
     {
-        ValidateBackground(menuKey, menu.Background, errors);
-        ValidateTheme(menuKey, menu.Theme, errors);
-        for (var li = 0; li < (menu.Layout?.Layers?.Count ?? 0); li++)
+        if (p is null)
         {
-            var layer = menu.Layout!.Layers![li];
-            var lwhere = $"{menuKey} layer {li}";
+            return;
+        }
+
+        foreach (var v in new[] { p.X, p.Y, p.W ?? 0, p.H ?? 0 })
+        {
+            if (v < 0 || v > 100 || double.IsNaN(v))
+            {
+                errors.Add($"{where} position values must be within 0-100");
+                break;
+            }
+        }
+
+        if (p.Anchor is not null && !Anchors.Contains(p.Anchor))
+        {
+            errors.Add($"{where} unknown anchor '{p.Anchor}'");
+        }
+    }
+
+    private static void CheckStyle(string where, string? style, List<string> errors)
+    {
+        if (style is not null && !ButtonStyles.Contains(style))
+        {
+            errors.Add($"{where} unknown button style '{style}'");
+        }
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex PlainLabel = new(
+        "^[^<>]{1,80}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Checks one layout block (a menu's own, or the document-wide default).</summary>
+    private static void ValidateLayout(string where, MenuLayout? layout, List<string> errors)
+    {
+        if (layout is null)
+        {
+            return;
+        }
+
+        CheckPosition($"{where} title", layout.TitlePosition, errors);
+        CheckStyle(where, layout.ButtonStyle, errors);
+
+        if (layout.Flow is { } flow)
+        {
+            var fwhere = $"{where} flow";
+            CheckPosition(fwhere + " region", flow.Region, errors);
+            if (flow.Region.W is null || flow.Region.H is null)
+            {
+                errors.Add($"{fwhere} region needs w and h");
+            }
+
+            if (flow.Columns is < 1 or > 8 || flow.Rows is < 1 or > 12)
+            {
+                errors.Add($"{fwhere} columns must be 1-8 and rows 1-12");
+            }
+
+            // Room for the page's own navigation (Back, Previous, More) plus at least one entry.
+            if (flow.Columns * flow.Rows < 4)
+            {
+                errors.Add($"{fwhere} needs at least 4 cells (columns x rows) to fit paging buttons");
+            }
+
+            foreach (var l in new[] { flow.MoreLabel, flow.PreviousLabel })
+            {
+                if (l is not null && !PlainLabel.IsMatch(l))
+                {
+                    errors.Add($"{fwhere} labels must be 1-80 characters with no < or >");
+                }
+            }
+        }
+
+        for (var li = 0; li < (layout.Layers?.Count ?? 0); li++)
+        {
+            var layer = layout.Layers![li];
+            var lwhere = $"{where} layer {li}";
             if (layer.Type is not ("panel" or "image"))
             {
                 errors.Add($"{lwhere} unknown type '{layer.Type}'");
@@ -134,7 +213,7 @@ public static class MenuFileLoader
 
             if (layer.Type == "image" && (layer.Image is null || !ImageRef.IsMatch(layer.Image)))
             {
-                errors.Add($"{lwhere} image must be an https URL or small png/jpeg/webp data: URI");
+                errors.Add($"{lwhere} image must be an https URL, small data: URI or asset: reference");
             }
 
             foreach (var c in new[] { layer.Fill, layer.BorderColor })
@@ -150,49 +229,36 @@ public static class MenuFileLoader
                 errors.Add($"{lwhere} opacity/borderWidth/radius out of range");
             }
 
-            var p = layer.Position;
-            if (p.X is < 0 or > 100 || p.Y is < 0 or > 100 || p.W is < 0 or > 100 || p.H is < 0 or > 100
-                || (p.Anchor is not null && !Anchors.Contains(p.Anchor)))
-            {
-                errors.Add($"{lwhere} position invalid");
-            }
+            CheckPosition(lwhere, layer.Position, errors);
         }
+    }
 
-        void CheckPosition(string where, PositionSpec? p)
-        {
-            if (p is null)
-            {
-                return;
-            }
-
-            foreach (var v in new[] { p.X, p.Y, p.W ?? 0, p.H ?? 0 })
-            {
-                if (v < 0 || v > 100 || double.IsNaN(v))
-                {
-                    errors.Add($"{where} position values must be within 0-100");
-                    break;
-                }
-            }
-
-            if (p.Anchor is not null && !Anchors.Contains(p.Anchor))
-            {
-                errors.Add($"{where} unknown anchor '{p.Anchor}'");
-            }
-        }
-
-        void CheckStyle(string where, string? style)
-        {
-            if (style is not null && !ButtonStyles.Contains(style))
-            {
-                errors.Add($"{where} unknown button style '{style}'");
-            }
-        }
-
-        CheckPosition($"{menuKey} title", menu.Layout?.TitlePosition);
-        CheckStyle(menuKey, menu.Layout?.ButtonStyle);
+    private static void ValidatePresentation(string menuKey, MenuDef menu, MenuLayout? documentLayout, List<string> errors)
+    {
+        ValidateBackground(menuKey, menu.Background, errors);
+        ValidateTheme(menuKey, menu.Theme, errors);
+        ValidateLayout(menuKey, menu.Layout, errors);
 
         var positioned = menu.Entries.Count(e => e.Position is not null);
-        if (positioned != 0 && positioned != menu.Entries.Count)
+        var flowSpec = menu.Layout?.Flow ?? documentLayout?.Flow;
+        var flows = flowSpec is not null;
+        if (flowSpec is not null)
+        {
+            // Back and Home are pinned to every page; with Previous, More and one entry
+            // that is pinned + 3 cells (never fewer than 4).
+            var pinned = (menu.Entries.Any(e => e is BackEntry) ? 1 : 0) + (menu.Entries.Any(e => e is HomeEntry) ? 1 : 0);
+            var needed = Math.Max(4, pinned + 3);
+            if (flowSpec.Columns * flowSpec.Rows < needed)
+            {
+                errors.Add($"menu '{menuKey}' needs a flow grid of at least {needed} cells for its pinned Back/Home plus paging buttons");
+            }
+        }
+
+        if (flows && positioned != 0)
+        {
+            errors.Add($"menu '{menuKey}' uses flow layout, so its entries must not have positions");
+        }
+        else if (positioned != 0 && positioned != menu.Entries.Count)
         {
             errors.Add($"menu '{menuKey}' mixes positioned and unpositioned entries (position all or none)");
         }
@@ -201,13 +267,13 @@ public static class MenuFileLoader
         {
             var e = menu.Entries[i];
             var where = $"{menuKey}[{i}]";
-            CheckPosition(where, e.Position);
-            CheckStyle(where, e.Style);
+            CheckPosition(where, e.Position, errors);
+            CheckStyle(where, e.Style, errors);
             foreach (var img in new[] { e.Image, e.ImageFocus })
             {
                 if (img is not null && !ImageRef.IsMatch(img))
                 {
-                    errors.Add($"{where} image must be an https URL or small png/jpeg/webp data: URI");
+                    errors.Add($"{where} image must be an https URL, small data: URI or asset: reference");
                 }
             }
         }
@@ -245,9 +311,10 @@ public static class MenuFileLoader
 
         ValidateTheme("document", m.Theme, errors);
         ValidateBackground("document", m.Background, errors);
+        ValidateLayout("document", m.Layout, errors);
         foreach (var (menuKey, menu) in m.Menus)
         {
-            ValidatePresentation(menuKey, menu, errors);
+            ValidatePresentation(menuKey, menu, m.Layout, errors);
         }
 
         var seen = new HashSet<string>();

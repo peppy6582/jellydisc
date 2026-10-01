@@ -22,6 +22,9 @@ public sealed class MenuDocument
 
     public ThemeSpec? Theme { get; init; }
 
+    /// <summary>Default layout every menu inherits, overridden field by field by a menu's own layout.</summary>
+    public MenuLayout? Layout { get; init; }
+
     public Dictionary<string, ExtraSpec> Extras { get; init; } = new();
 
     public required string Root { get; init; }
@@ -103,6 +106,9 @@ public enum BackgroundSource
 
     [JsonStringEnumMemberName("image")]
     Image,
+
+    [JsonStringEnumMemberName("trailer")]
+    Trailer,
 }
 
 /// <summary>
@@ -131,6 +137,15 @@ public sealed class BackgroundSpec
 
     /// <summary>For source=image: https URL, data: URI or asset: reference.</summary>
     public string? Image { get; init; }
+
+    /// <summary>For source=trailer: 0-based index into the item's trailers (local files first, then YouTube).</summary>
+    public int? TrailerIndex { get; init; }
+
+    /// <summary>For source=trailer: default true.</summary>
+    public bool? Muted { get; init; }
+
+    /// <summary>For source=trailer: picture shown until the video plays, and as the fallback.</summary>
+    public string? Poster { get; init; }
 
     public double? Dim { get; init; }
 }
@@ -230,7 +245,23 @@ public sealed class MenuLayout
 
     public string? ButtonStyle { get; init; }
 
+    public FlowSpec? Flow { get; init; }
+
     public List<LayerSpec>? Layers { get; init; }
+}
+
+/// <summary>Automatic grid placement with paging (More / Previous).</summary>
+public sealed class FlowSpec
+{
+    public required PositionSpec Region { get; init; }
+
+    public int Columns { get; init; }
+
+    public int Rows { get; init; }
+
+    public string? MoreLabel { get; init; }
+
+    public string? PreviousLabel { get; init; }
 }
 
 /// <summary>A decorative layer behind the buttons: type "panel" (flat box) or "image".</summary>

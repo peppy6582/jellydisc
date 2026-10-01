@@ -23,11 +23,13 @@
     'use strict';
 
     var OVERLAY_ID = 'discMenusOverlay';
+    var VIDEO_ID = 'discMenusVideo';
     var BUTTON_ID = 'discMenusButton';
 
     var currentParentItemId = null;
     var menuDoc = null;
     var menuStack = [];
+    var menuPage = {};
 
     function getItemIdFromHash() {
         var hash = window.location.hash || '';
@@ -111,10 +113,12 @@
 
         menuStack = [menuDoc.Root];
         lastFocusIndex = {};
+        menuPage = {};
         renderOverlay(parentItemId);
     }
 
     function closeOverlay() {
+        removeVideo();
         var existing = document.getElementById(OVERLAY_ID);
         if (existing) {
             existing.remove();
@@ -235,7 +239,17 @@
         }
     }
 
-    function goBack(parentItemId) {
+    // fromKey: the Back key / gamepad B steps back through a menu's pages first;
+    // an on-screen Back button always goes up to the parent menu.
+    function goBack(parentItemId, fromKey) {
+        var topKey = menuStack[menuStack.length - 1];
+        if (fromKey && (menuPage[topKey] || 0) > 0) {
+            menuPage[topKey]--;
+            lastFocusIndex[topKey] = 0;
+            renderOverlay(parentItemId);
+            return;
+        }
+
         if (menuStack.length > 1) {
             menuStack.pop();
             renderOverlay(parentItemId);
@@ -262,7 +276,7 @@
         } else if (SELECT_KEYS[e.key]) {
             selectFocused();
         } else if (BACK_KEYS[e.key] || BACK_KEYCODES[e.keyCode]) {
-            goBack(currentParentItemId);
+            goBack(currentParentItemId, true);
         } else {
             handled = false;
         }
@@ -321,7 +335,7 @@
             else if (name === 'left') { moveFocus(-1, 0); }
             else if (name === 'right') { moveFocus(1, 0); }
             else if (name === 'select') { selectFocused(); }
-            else if (name === 'back') { goBack(currentParentItemId); }
+            else if (name === 'back') { goBack(currentParentItemId, true); }
         });
 
         Object.keys(gamepadHeld).forEach(function (name) {
@@ -346,6 +360,12 @@
 
         if (background.Source === 'color' && background.Color) {
             return 'background-color:' + background.Color + ';';
+        }
+
+        if (background.Source === 'trailer') {
+            // The video sits in its own layer beneath the overlay (see syncVideo);
+            // the overlay itself only dims it for legibility.
+            return 'background-color:rgba(0,0,0,' + (background.Dim != null ? background.Dim : 0.25) + ');';
         }
 
         if (background.Source === 'image') {
@@ -592,6 +612,308 @@
         return btn;
     }
 
+    // A menu's layout overrides the document-wide default field by field, so
+    // submenus can inherit the main menu's banner/style without repeating it.
+    function effectiveLayout(menu) {
+        var merged = {};
+        [menuDoc.Layout, menu.Layout].forEach(function (src) {
+            Object.keys(src || {}).forEach(function (k) {
+                if (src[k] !== null && src[k] !== undefined) {
+                    merged[k] = src[k];
+                }
+            });
+        });
+        return merged;
+    }
+
+    // Splits entries into pages for a grid of `slots` cells. 'back' entries are
+    // pinned to every page (like a disc's Return button). Navigation buttons
+    // take cells too, so a page's capacity shrinks by Back, Previous (after the
+    // first page) and More (when more follows). Pure function: easy to test.
+    function paginate(entries, slots) {
+        // The first 'back' and the first 'home' are pinned, in entry order; any
+        // further ones are ordinary entries. That caps the pinned buttons at
+        // Back + Home + Previous + More = 4, so a grid of (pinned + 3) cells
+        // always leaves room for at least one entry per page (the loader
+        // enforces that minimum).
+        var firstBack = entries.filter(function (e) { return e.Action === 'back'; })[0];
+        var firstHome = entries.filter(function (e) { return e.Action === 'home'; })[0];
+        var backs = entries.filter(function (e) { return e === firstBack || e === firstHome; });
+        var content = entries.filter(function (e) { return backs.indexOf(e) < 0; });
+        var pages = [];
+        var taken = 0;
+        for (;;) {
+            var navBase = backs.length + (pages.length > 0 ? 1 : 0);
+            var left = content.length - taken;
+            if (left <= slots - navBase) {
+                pages.push({ items: content.slice(taken), backs: backs, prev: pages.length > 0, more: false });
+                return pages;
+            }
+
+            var capacity = Math.max(1, slots - navBase - 1);
+            pages.push({ items: content.slice(taken, taken + capacity), backs: backs, prev: pages.length > 0, more: true });
+            taken += capacity;
+        }
+    }
+
+    // Centre of grid cell `slot` inside the flow region, as a position the
+    // normal place() understands.
+    function cellPosition(flow, slot, tall) {
+        var r = flow.Region;
+        var shift = ANCHOR_SHIFT[r.Anchor || 'top-left'] || ANCHOR_SHIFT['top-left'];
+        var left = r.X + (shift[0] / 100) * r.W;
+        var top = r.Y + (shift[1] / 100) * r.H;
+        var cw = r.W / flow.Columns;
+        var ch = r.H / flow.Rows;
+        return {
+            X: left + ((slot % flow.Columns) + 0.5) * cw,
+            Y: top + (Math.floor(slot / flow.Columns) + 0.5) * ch,
+            W: cw * 0.94,
+            H: tall ? ch * 0.94 : null,
+            Anchor: 'center',
+        };
+    }
+
+    // The entries to draw for this menu right now, each with its on-screen
+    // position when the menu is laid out by flow (paged) rather than by hand.
+    function entriesForPage(menu, layout, menuKey) {
+        var flow = layout.Flow;
+        if (!flow) {
+            return { entries: menu.Entries, pages: 1, page: 0 };
+        }
+
+        var slots = flow.Columns * flow.Rows;
+        var pages = paginate(menu.Entries, slots);
+        var page = Math.min(menuPage[menuKey] || 0, pages.length - 1);
+        menuPage[menuKey] = page;
+        var p = pages[page];
+
+        var nav = p.backs.slice();
+        if (p.prev) {
+            nav.push({ Action: 'pagePrev', Label: flow.PreviousLabel || 'Previous' });
+        }
+
+        if (p.more) {
+            nav.push({ Action: 'pageNext', Label: flow.MoreLabel || 'More' });
+        }
+
+        var placed = [];
+        p.items.forEach(function (e, i) {
+            placed.push(Object.assign({}, e, { Position: cellPosition(flow, i, !!e.Image) }));
+        });
+        // Navigation sits in the last cells of the grid, in a stable order.
+        nav.forEach(function (e, j) {
+            placed.push(Object.assign({}, e, { Position: cellPosition(flow, slots - nav.length + j, !!e.Image) }));
+        });
+        return { entries: placed, pages: pages.length, page: page };
+    }
+
+    // ---- Trailer video background ---------------------------------------------
+    // The video lives in its own fixed layer *under* the menu overlay, not inside
+    // it, because the overlay is rebuilt on every page/submenu change: a video
+    // inside would restart each time. Like a disc, it keeps looping across menus
+    // and goes away when the menu closes or playback starts.
+
+    var videoKey = null;
+    var videoFrame = null;
+    var YT_ORIGIN = 'https://www.youtube-nocookie.com';
+
+    function removeVideo() {
+        var el = document.getElementById(VIDEO_ID);
+        if (el) {
+            el.remove();
+        }
+
+        videoKey = null;
+        videoFrame = null;
+    }
+
+    function chooseTrailer(background) {
+        var trailers = (menuDoc && menuDoc.Trailers) || [];
+        return trailers[background.TrailerIndex || 0] || null;
+    }
+
+    // Cover-fit a 16:9 video into any screen shape (an iframe has no object-fit).
+    var COVER_CSS =
+        'position:absolute;top:50%;left:50%;width:max(100vw,177.78vh);height:max(100vh,56.25vw);' +
+        'transform:translate(-50%,-50%);border:0;object-fit:cover;opacity:0;transition:opacity 0.8s;' +
+        'pointer-events:none;';
+
+    function buildYouTube(videoId, muted, reveal, giveUp) {
+        var frame = document.createElement('iframe');
+        var params = [
+            'autoplay=1', 'mute=' + (muted ? 1 : 0), 'controls=0', 'loop=1', 'playlist=' + videoId,
+            'playsinline=1', 'rel=0', 'cc_load_policy=0', 'modestbranding=1', 'disablekb=1', 'iv_load_policy=3', 'fs=0',
+            'enablejsapi=1', 'origin=' + encodeURIComponent(window.location.origin),
+        ];
+        frame.src = YT_ORIGIN + '/embed/' + videoId + '?' + params.join('&');
+        frame.setAttribute('allow', 'autoplay; encrypted-media');
+        frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+        frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+        frame.setAttribute('aria-hidden', 'true');
+        frame.tabIndex = -1;
+        frame.title = '';
+        frame.style.cssText = COVER_CSS;
+
+        // Ask the embedded player to report its state so we can reveal it only
+        // once it is really playing, and drop it if embedding is refused.
+        function hideCaptions() {
+            // 'captions' is the current module name, 'cc' the older one; asking to
+            // unload one that isn't present is harmless.
+            ['captions', 'cc'].forEach(function (module) {
+                try {
+                    frame.contentWindow.postMessage(
+                        JSON.stringify({ event: 'command', func: 'unloadModule', args: [module] }), YT_ORIGIN);
+                } catch (e) {
+                    // frame already gone
+                }
+            });
+        }
+
+        frame.addEventListener('load', function () {
+            try {
+                frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), YT_ORIGIN);
+            } catch (e) {
+                reveal();
+            }
+
+            hideCaptions();
+        });
+        frame.discMenusOnMessage = function (data) {
+            if (data.event === 'onError') {
+                console.warn('[Disc Menus] YouTube refused to play this trailer (error ' + data.info + '); keeping the poster');
+                giveUp();
+            } else if (
+                (data.event === 'onStateChange' && data.info === 1) ||
+                (data.event === 'infoDelivery' && data.info && data.info.playerState === 1)
+            ) {
+                reveal();
+                // The captions module loads once playback begins, so ask again now.
+                hideCaptions();
+                setTimeout(hideCaptions, 1000);
+            }
+        };
+        return frame;
+    }
+
+    function buildLocalVideo(itemId, muted, reveal, giveUp) {
+        var video = document.createElement('video');
+        video.muted = muted;
+        video.autoplay = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.setAttribute('aria-hidden', 'true');
+        video.tabIndex = -1;
+        video.style.cssText = COVER_CSS;
+        video.src = ApiClient.getUrl('Videos/' + itemId + '/stream', { static: true, api_key: ApiClient.accessToken() });
+        // A local trailer file may carry embedded subtitle tracks; keep them all off.
+        function hideTracks() {
+            var tracks = video.textTracks;
+            for (var i = 0; tracks && i < tracks.length; i++) {
+                tracks[i].mode = 'disabled';
+            }
+        }
+
+        if (video.textTracks && video.textTracks.addEventListener) {
+            video.textTracks.addEventListener('addtrack', hideTracks);
+        }
+
+        video.addEventListener('loadedmetadata', hideTracks);
+        video.addEventListener('playing', hideTracks);
+        video.addEventListener('playing', reveal);
+        video.addEventListener('error', function () {
+            console.warn('[Disc Menus] the browser could not play this trailer file directly; keeping the poster');
+            giveUp();
+        });
+        return video;
+    }
+
+    // Make the video layer match what the current menu's background wants:
+    // keep it untouched if it's the same trailer, replace it if it changed,
+    // remove it if the menu has no trailer background.
+    function syncVideo(background) {
+        if (!background || background.Source !== 'trailer') {
+            removeVideo();
+            return;
+        }
+
+        var trailer = chooseTrailer(background);
+        var muted = background.Muted !== false;
+        var poster = safeImage(background.Poster);
+        var key = [trailer ? trailer.Kind + ':' + (trailer.VideoId || trailer.ItemId) : 'none', muted, poster].join('|');
+        if (videoKey === key && document.getElementById(VIDEO_ID)) {
+            return;
+        }
+
+        removeVideo();
+        videoKey = key;
+
+        var layer = document.createElement('div');
+        layer.id = VIDEO_ID;
+        layer.setAttribute('aria-hidden', 'true');
+        layer.style.cssText =
+            'position:fixed;inset:0;z-index:9998;overflow:hidden;pointer-events:none;background-color:#000;' +
+            (poster ? 'background-image:url(' + poster + ');background-size:cover;background-position:center;' : '');
+        document.body.appendChild(layer);
+
+        if (!trailer) {
+            console.info('[Disc Menus] this item has no usable trailer; showing the poster only');
+            return;
+        }
+
+        var media = null;
+        function reveal() {
+            if (media) {
+                media.style.opacity = '1';
+            }
+        }
+
+        function giveUp() {
+            if (media) {
+                media.remove();
+                media = null;
+                videoFrame = null;
+            }
+        }
+
+        if (trailer.Kind === 'youtube' && trailer.VideoId) {
+            media = buildYouTube(trailer.VideoId, muted, reveal, giveUp);
+            videoFrame = media;
+            // If the player never reports anything (messaging blocked), show it
+            // anyway after a while rather than leave the poster up forever.
+            setTimeout(function () {
+                if (media && videoFrame === media && !media.discMenusHeard) {
+                    reveal();
+                }
+            }, 6000);
+        } else if (trailer.Kind === 'local' && trailer.ItemId && window.ApiClient) {
+            media = buildLocalVideo(trailer.ItemId, muted, reveal, giveUp);
+        }
+
+        if (media) {
+            layer.appendChild(media);
+        }
+    }
+
+    // Messages from the YouTube player; only ever trust our own frame's.
+    window.addEventListener('message', function (e) {
+        if (!videoFrame || e.origin !== YT_ORIGIN || e.source !== videoFrame.contentWindow) {
+            return;
+        }
+
+        var data;
+        try {
+            data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        } catch (err) {
+            return;
+        }
+
+        if (data && typeof data === 'object') {
+            videoFrame.discMenusHeard = true;
+            videoFrame.discMenusOnMessage(data);
+        }
+    });
+
     function renderOverlay(parentItemId) {
         var menuKey = menuStack[menuStack.length - 1];
         var menu = menuDoc.Menus[menuKey];
@@ -609,10 +931,12 @@
         var align = theme.Align || 'left';
         var alignItems = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
         var background = menu.Background || menuDoc.Background;
-        var layout = menu.Layout || {};
+        var layout = effectiveLayout(menu);
         var defaultStyle = layout.ButtonStyle || 'frame';
-        // The server guarantees all-or-none, so one check is enough.
-        var positioned = menu.Entries.length > 0 && menu.Entries.every(function (e) { return !!e.Position; });
+        var shown = entriesForPage(menu, layout, menuKey).entries;
+        // The server guarantees all-or-none (and flow menus have no hand positions),
+        // so one check is enough.
+        var positioned = shown.length > 0 && shown.every(function (e) { return !!e.Position; });
 
         overlay.style.cssText =
             'position:fixed;inset:0;z-index:9999;color:#fff;overflow:hidden;' +
@@ -620,6 +944,7 @@
                 ? ''
                 : 'display:flex;flex-direction:column;justify-content:center;align-items:' + alignItems + ';padding:4em;') +
             backgroundStyle(background, parentItemId);
+        syncVideo(background);
 
         var closeBtn = document.createElement('button');
         closeBtn.type = 'button';
@@ -658,7 +983,7 @@
             list.style.cssText = 'display:flex;flex-direction:column;gap:0.5em;';
         }
 
-        menu.Entries.forEach(function (entry, entryIndex) {
+        shown.forEach(function (entry, entryIndex) {
             var btn = buildEntryButton(entry, defaultStyle, theme, align);
             if (positioned) {
                 place(btn, entry.Position);
@@ -683,6 +1008,9 @@
                 }
             });
             btn.addEventListener('click', function () {
+                // Remember what was activated even where clicking doesn't focus a
+                // button (Safari, touch), so Back returns to it.
+                lastFocusIndex[menuKey] = entryIndex;
                 handleEntry(entry, parentItemId);
             });
             list.appendChild(btn);
@@ -814,12 +1142,28 @@
             case 'submenu':
                 if (entry.Menu && menuDoc.Menus[entry.Menu]) {
                     menuStack.push(entry.Menu);
+                    menuPage[entry.Menu] = 0;
+                    delete lastFocusIndex[entry.Menu];
                     renderOverlay(parentItemId);
                 }
 
                 break;
             case 'back':
-                goBack(parentItemId);
+                goBack(parentItemId, false);
+                break;
+            case 'home':
+                // Straight to the root menu, whatever depth we're at. The root keeps
+                // its remembered highlight, so Home lands on the button you left it from.
+                menuStack = [menuDoc.Root];
+                menuPage = {};
+                renderOverlay(parentItemId);
+                break;
+            case 'pageNext':
+            case 'pagePrev':
+                var pageKey = menuStack[menuStack.length - 1];
+                menuPage[pageKey] = (menuPage[pageKey] || 0) + (entry.Action === 'pageNext' ? 1 : -1);
+                lastFocusIndex[pageKey] = 0;
+                renderOverlay(parentItemId);
                 break;
             case 'chapters':
                 alertUnavailable("Scene selection isn't implemented yet.");

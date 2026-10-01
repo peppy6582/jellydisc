@@ -56,6 +56,11 @@ public sealed class ChaptersEntry : MenuEntry
     public int? PerPage { get; init; }
 }
 
+/// <summary>Jump straight to the root menu (a "Home" / "Main Menu" button).</summary>
+public sealed class HomeEntry : MenuEntry
+{
+}
+
 /// <summary>Return to the previous menu.</summary>
 public sealed class BackEntry : MenuEntry
 {

@@ -22,6 +22,10 @@
     "match": { "$ref": "#/$defs/match" },
     "background": { "$ref": "#/$defs/background" },
     "theme": { "$ref": "#/$defs/theme" },
+    "layout": {
+      "description": "Default layout for every menu. A menu's own layout overrides it field by field, so submenus can share the main menu's banner and style without repeating it.",
+      "$ref": "#/$defs/menuLayout"
+    },
     "extras": {
       "description": "Extras this release is expected to contain, keyed by a menu-local key. Entries reference these keys; each is resolved once to a local item in the binding file.",
       "type": "object",
@@ -93,6 +97,7 @@
         "titlePosition": { "$ref": "#/$defs/position" },
         "hideTitle": { "type": "boolean" },
         "buttonStyle": { "description": "Default for entries that don't set their own style.", "$ref": "#/$defs/buttonStyle" },
+        "flow": { "$ref": "#/$defs/flow" },
         "layers": {
           "description": "Decorative shapes and images drawn behind the buttons, in order (later layers on top). They are not focusable.",
           "type": "array",
@@ -103,6 +108,24 @@
     },
 
     "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+
+    "flow": {
+      "description": "Automatic grid placement with paging. Entries that have no position of their own are laid out left-to-right, top-to-bottom inside the region. If they don't all fit, the renderer adds a More button (and Previous on later pages); 'back' entries stay on every page. A menu using flow must not also give entries positions.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["region", "columns", "rows"],
+      "properties": {
+        "region": {
+          "description": "The box the grid fills, e.g. the inside of a banner image.",
+          "$ref": "#/$defs/position",
+          "required": ["x", "y", "w", "h"]
+        },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "rows": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "moreLabel": { "description": "Default: More.", "$ref": "#/$defs/label" },
+        "previousLabel": { "description": "Default: Previous.", "$ref": "#/$defs/label" }
+      }
+    },
 
     "layer": {
       "type": "object",
@@ -198,7 +221,21 @@
       "additionalProperties": false,
       "required": ["source"],
       "properties": {
-        "source": { "enum": ["jellyfin", "tmdb", "fanart", "color", "image"] },
+        "source": { "enum": ["jellyfin", "tmdb", "fanart", "color", "image", "trailer"] },
+        "trailerIndex": {
+          "description": "For source=trailer: which of the item's trailers to use, 0-based (default 0). Local trailer files come first, then the YouTube trailers Jellyfin has stored for the item.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9
+        },
+        "muted": {
+          "description": "For source=trailer: play without sound (default true). Browsers may refuse unmuted autoplay.",
+          "type": "boolean"
+        },
+        "poster": {
+          "description": "For source=trailer: picture shown until the video is playing, and kept if the item has no usable trailer or embedding is blocked.",
+          "$ref": "#/$defs/imageRef"
+        },
         "image": {
           "description": "For source=image: the picture to use (https URL, data: URI, or asset: reference).",
           "$ref": "#/$defs/imageRef"
@@ -322,7 +359,7 @@
       "type": "object",
       "required": ["action", "label"],
       "properties": {
-        "action": { "enum": ["playFeature", "playExtra", "playSequence", "submenu", "chapters", "back"] },
+        "action": { "enum": ["playFeature", "playExtra", "playSequence", "submenu", "chapters", "back", "home"] },
         "label": { "$ref": "#/$defs/label" }
       },
       "oneOf": [
@@ -396,6 +433,18 @@
             "image": { "$ref": "#/$defs/imageRef" },
             "imageFocus": { "$ref": "#/$defs/imageRef" },
             "perPage": { "type": "integer", "minimum": 1, "maximum": 24 }
+          }
+        },
+        {
+          "title": "Jump straight to the root menu (a 'Home' / 'Main Menu' button)",
+          "additionalProperties": false,
+          "properties": {
+            "action": { "const": "home" },
+            "label": true,
+            "position": { "$ref": "#/$defs/position" },
+            "style": { "$ref": "#/$defs/buttonStyle" },
+            "image": { "$ref": "#/$defs/imageRef" },
+            "imageFocus": { "$ref": "#/$defs/imageRef" }
           }
         },
         {

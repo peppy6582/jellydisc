@@ -68,6 +68,29 @@ keep working unchanged.
 - **Navigation just works:** focus moves to the nearest button in the pressed direction by on-screen
   position, so any layout is navigable with arrow keys, a remote or a gamepad.
 
+- **Shared look:** a top-level `layout` is the default for every menu; a menu's own `layout` overrides
+  it field by field. Put the banner `layers`, `buttonStyle` and `hideTitle` there once and every
+  submenu inherits them.
+- **Automatic grid + paging (`layout.flow`):** `{ region, columns, rows, moreLabel?, previousLabel? }`.
+  Entries with no `position` fill the region's cells left-to-right, top-to-bottom, so a submenu can sit
+  inside the same banner without hand-placing anything. If they don't all fit, the renderer adds a
+  **More** button (and **Previous** on later pages) in the grid's last cells. The first `back` entry is
+  pinned to every page, like a disc's Return button. Use `home` (jump to the root menu) instead of `back`
+  (return to the parent) when you want a "Home"/"Main Menu" button that is never confused with Previous. The Back *key* steps back a page first; the
+  on-screen Back button goes up to the parent menu. A flow menu's entries must not have positions, and
+  the grid needs at least 4 cells so the paging buttons never crowd out every entry.
+
+- **Trailer video background:** `background` `{ "source": "trailer", "trailerIndex"?, "muted"?, "poster"?, "dim"? }`
+  plays one of the item's own trailers behind the menu. `trailerIndex` (default 0) counts local trailer
+  files first, then the YouTube trailers Jellyfin has stored for the item (Thor: 0 = Official, 1 = Teaser).
+  YouTube trailers play in a muted, looping, borderless privacy-enhanced embed (`youtube-nocookie.com`),
+  faded in only once the player reports it is playing; local files play in a plain `<video>`. The
+  `poster` image shows until then and stays if the item has no trailer or embedding is refused. The
+  video sits in its own layer, so it keeps looping across submenus and pages and stops when the menu
+  closes. Caveats: YouTube playback needs internet access and tells Google the viewer watched it; some
+  trailers disallow embedding; local trailers only play if the browser can decode the file directly. Captions are always suppressed for background trailers (YouTube's captions are
+  unloaded even if the viewer's YouTube account prefers them, and a local file's embedded subtitle tracks are disabled).
+
 **Shareable means no binaries and no code.** Images are never embedded files or paths: an `image` is
 an `https://` URL or a small `data:image/(png|jpeg|webp);base64,` URI (SVG is refused). URLs may not
 contain whitespace, quotes, parentheses or angle brackets. The server and the browser both re-check this,

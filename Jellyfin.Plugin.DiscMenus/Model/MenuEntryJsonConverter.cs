@@ -32,6 +32,7 @@ public sealed class MenuEntryJsonConverter : JsonConverter<MenuEntry>
             "submenu" => JsonSerializer.Deserialize<SubmenuEntry>(json, options)!,
             "chapters" => JsonSerializer.Deserialize<ChaptersEntry>(json, options)!,
             "back" => JsonSerializer.Deserialize<BackEntry>(json, options)!,
+            "home" => JsonSerializer.Deserialize<HomeEntry>(json, options)!,
             _ => throw new JsonException($"Unknown menu entry action '{action}'."),
         };
     }
