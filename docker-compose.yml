@@ -37,7 +37,7 @@ services:
     container_name: jellyfin-disc-menus-validate
     profiles: ["tools"]
     working_dir: /workspace
-    command: sh -c "pip install --quiet jsonschema && python3 tools/validate.py && python3 -m unittest discover -s tools -p 'test_*.py'"
+    command: sh -c "pip install --quiet jsonschema && python3 tools/validate.py && python3 -m unittest discover -s tools -p 'test_*.py' && python3 conformance/python/run_vectors.py && python3 conformance/python/mutants.py"
     volumes:
       - .:/workspace
       - jdm_pip:/root/.cache/pip

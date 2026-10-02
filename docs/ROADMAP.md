@@ -59,9 +59,8 @@ Working today, on Jellyfin 12.x with the web client:
   default plugin catalogue.
 
 ### Other clients
-- A written client implementer's guide: the response format of `GET /DiscMenus/{itemId}/Menu`, the layout,
-  paging and navigation rules, and test vectors from the existing test suites, so a native client (Swiftfin,
-  Neptune, Android TV, ...) can render the same menus. **big**
+- A client implementer's guide ([CLIENT_GUIDE.md](CLIENT_GUIDE.md)) and conformance vectors ([conformance/](../conformance/README.md)) exist. What's left is vectors for
+  the visual and audible rules, a reference client that isn't a web page, and feedback from the first real implementer. **big**
 
 ### Quality
 - More example menus in different styles. **good first**

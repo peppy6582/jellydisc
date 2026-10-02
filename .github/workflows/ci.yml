@@ -38,6 +38,10 @@ jobs:
         run: python3 -m unittest discover -s tools -p "test_*.py"
       - name: Check the examples with the menu checker
         run: python3 tools/menucheck.py examples/*.menu.json
+      - name: Conformance vectors against the second (clean-room) implementation
+        run: python3 conformance/python/run_vectors.py
+      - name: The vectors catch small mistakes (mutation test)
+        run: python3 conformance/python/mutants.py
 
   browser:
     name: Browser-code tests

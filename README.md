@@ -124,10 +124,11 @@ with that in mind:
 - **A working reference.** [`Web/discmenus.js`](Jellyfin.Plugin.DiscMenus/Web/discmenus.js) is a complete
   implementation (layout, paging, navigation, scene selection, audio, transitions), and the suites in
   [`tests/js/`](tests/js) pin down the behaviour precisely, so they double as test vectors.
-- **What's still missing for you:** a written client implementer's guide (response format, the paging and
-  navigation rules) and conformance tests are on the [roadmap](docs/ROADMAP.md#other-clients). If you're
-  interested, please **open an issue** so we can shape that guide around what a client actually needs; your
-  questions will drive what gets written first.
+- **A client implementer's guide and a conformance suite.** [`docs/CLIENT_GUIDE.md`](docs/CLIENT_GUIDE.md) describes the document, the
+  paging, navigation and scene-selection rules, backgrounds, themes, transitions and audio, and what to substitute outside a browser.
+  [`conformance/`](conformance/README.md) has 600+ machine-checked test vectors for the rules that need no screen, generated from the reference renderer and
+  verified against a second implementation written only from the guide. If you're building a client, please **open an issue** with anything unclear or missing:
+  your questions will decide what gets written next.
 
 ## Contributing
 
