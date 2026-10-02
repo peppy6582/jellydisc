@@ -3,7 +3,7 @@
   "menuId": "ac8363be-07f3-4682-846d-703d101b5c0d",
   "revision": 1,
   "meta": {
-    "author": "phillip",
+    "author": "peppy6582",
     "language": "en-US",
     "notes": "EXAMPLE 5 - a real menu (Thor: Ragnarok, UHD): Official Trailer behind the menu, one banner declared once and inherited by every menu, hand-placed main buttons, paged Special Features with Home, styled scene selection, slide transitions, click sounds. Its artwork (asset:thor-ragnarok/background.webp, menu-banner.webp) is NOT included - it belongs to the studio. Supply your own images with those names; without them the menu works, minus the pictures."
   },

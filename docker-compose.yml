@@ -1,40 +1,37 @@
-# Dev environment for jellyfin-disc-menus (a Jellyfin 12.x plugin).
+# Development tools for Disc Menus (a Jellyfin 12.x plugin). Nothing here runs as a service: the plugin is
+# a DLL that Jellyfin loads, so these containers only provide build and test tools.
 #
-# WHY NOTHING RUNS AS A SERVICE: this project produces a plugin DLL, it does not
-# host anything. `autostart` is false and `dev` idles on `sleep infinity` purely
-# so VS Code has a container to attach to. Bringing the stack "up" starts a
-# shell, not a server.
+#   docker compose up -d dev                                  # .NET 10 SDK container (idles)
+#   docker compose exec dev dotnet build Jellyfin.Plugin.DiscMenus -c Release
+#   docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests
+#   docker compose run --rm validate                          # JSON Schema + example checks
+#   docker compose run --rm jstest                            # browser-code tests (Node + jsdom)
 #
-# WHERE THE SOURCE LIVES -- read before changing any volume path:
-# /workspace/compose-projects maps to /boot/config/plugins/compose.manager/projects
-# on the host, which is the BOOT FLASH (a USB stick). Source is fine there: it is
-# small, and restic backs this tree up (appdata is NOT backed up, this is).
-# Build output is NOT fine there -- a NuGet restore plus obj/bin would write
-# hundreds of MB to flash on every build. Directory.Build.props redirects all of
-# it into the jdm_artifacts volume via $JDM_ARTIFACTS, set below.
+# You don't need Docker: with the .NET 10 SDK, Python 3 and Node 20+ installed you can run the same
+# commands directly (see docs/DEVELOPMENT.md).
+#
+# Build output and package caches go in named volumes, not the source tree: it keeps the checkout tidy and
+# works even when the source sits on a filesystem that is slow or can't hold symlinks (npm needs them).
 
 services:
   dev:
     image: mcr.microsoft.com/dotnet/sdk:10.0
     container_name: jellyfin-disc-menus-dev
-    restart: unless-stopped
     working_dir: /workspace
     command: sleep infinity
     environment:
-      - TZ=America/Chicago
       - DOTNET_CLI_TELEMETRY_OPTOUT=1
       - DOTNET_NOLOGO=1
-      # Consumed by Directory.Build.props. Unset outside the container, so a
-      # build on the host falls back to the normal ./bin and ./obj.
+      # Read by Directory.Build.props: send bin/ and obj/ to the named volume below. Unset outside the
+      # container, so a build on your own machine uses the normal ./bin and ./obj.
       - JDM_ARTIFACTS=/artifacts
       - NUGET_PACKAGES=/nuget
     volumes:
-      - /boot/config/plugins/compose.manager/projects/jellyfin-disc-menus:/workspace
+      - .:/workspace
       - jdm_nuget:/nuget
       - jdm_artifacts:/artifacts
 
   # One-shot JSON schema validation. Behind a profile so `up -d` ignores it.
-  #   docker compose run --rm validate
   validate:
     image: python:3.13-slim
     container_name: jellyfin-disc-menus-validate
@@ -42,10 +39,22 @@ services:
     working_dir: /workspace
     command: sh -c "pip install --quiet jsonschema && python3 tools/validate.py"
     volumes:
-      - /boot/config/plugins/compose.manager/projects/jellyfin-disc-menus:/workspace
+      - .:/workspace
       - jdm_pip:/root/.cache/pip
+
+  # Browser-code tests. node_modules lives in a named volume so the install works on any host filesystem.
+  jstest:
+    image: node:22-slim
+    container_name: jellyfin-disc-menus-jstest
+    profiles: ["tools"]
+    working_dir: /workspace/tests/js
+    command: sh -c "npm install --no-audit --no-fund --loglevel=error && npm test"
+    volumes:
+      - .:/workspace
+      - jdm_node:/workspace/tests/js/node_modules
 
 volumes:
   jdm_nuget:
   jdm_artifacts:
   jdm_pip:
+  jdm_node:

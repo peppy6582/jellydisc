@@ -8,3 +8,10 @@ __pycache__/
 # and must never be committed or shared (see README "Layout").
 *.binding.json
 !examples/example.binding.json
+
+# Local docker compose-manager project files
+/autostart
+/name
+
+# Node
+node_modules/

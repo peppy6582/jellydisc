@@ -14,6 +14,5 @@ category: "General"
 artifacts:
   - "Jellyfin.Plugin.DiscMenus.dll"
 changelog: >
-  - 0.1.0.0: Initial scaffold. Loads and validates disc-menu JSON and
-    exposes matched entries as local Special Features. No config page, no
-    duration auto-matcher, no web renderer yet.
+  - 0.1.0.0: Early alpha. Shareable disc menus with layouts, backgrounds, music, transitions and scene
+    selection; automatic matching to library titles; a dashboard menu editor with live preview.
