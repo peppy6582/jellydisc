@@ -55,9 +55,8 @@ Working today, on Jellyfin 12.x with the web client:
 - An allowlist of image hosts for shared menus, and a menu contribution policy.
 
 ### Packaging
-- A release pipeline: build with [jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager),
-  publish a zip on GitHub Releases, and a plugin repository manifest so it can be installed from Jellyfin's
-  catalogue. **good first** for someone who knows jprm.
+- The release pipeline is built (see [Releasing](RELEASING.md)); what remains is publishing the first release and, later, listing the
+  plugin in Jellyfin's default plugin catalogue.
 
 ### Other clients
 - A written client implementer's guide: the response format of `GET /DiscMenus/{itemId}/Menu`, the layout,
