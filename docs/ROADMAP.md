@@ -55,8 +55,8 @@ Working today, on Jellyfin 12.x with the web client:
 - An allowlist of image hosts for shared menus, and a menu contribution policy.
 
 ### Packaging
-- The release pipeline is built (see [Releasing](RELEASING.md)); what remains is publishing the first release and, later, listing the
-  plugin in Jellyfin's default plugin catalogue.
+- Releases are published by tag (see [Releasing](RELEASING.md)); v0.1.0 is out. What remains is listing the plugin in Jellyfin's
+  default plugin catalogue.
 
 ### Other clients
 - A written client implementer's guide: the response format of `GET /DiscMenus/{itemId}/Menu`, the layout,

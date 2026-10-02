@@ -3,9 +3,9 @@
 A Jellyfin plugin that recreates **DVD and Blu-ray disc menus**: shareable JSON menus with backgrounds,
 music, transitions and scene selection, linked automatically to the movies in your library.
 
-> **Status: early alpha.** It works end to end on Jellyfin 12.x in the web client, but it isn't packaged for
-> Jellyfin's plugin catalogue yet, so for now you build it yourself (it takes a few minutes). It's built in
-> the open and **[help is very welcome](CONTRIBUTING.md)**.
+> **Status: early alpha.** It works end to end on Jellyfin 12.x in the web client, and you can
+> [install it from a plugin repository](#getting-started) (it isn't in Jellyfin's default catalogue yet). It's built
+> in the open and **[help is very welcome](CONTRIBUTING.md)**.
 
 > **Heads up: this project is vibe coded.** All of the code in this repository was written by an AI (Claude, through Claude Code) while
 > [Phillip Berryman](https://github.com/peppy6582) steered. The one human-originated piece is the idea of describing disc menus as a
@@ -74,9 +74,15 @@ viewer on the right:
 
 ## Getting started
 
-1. **Install:** build the plugin and copy it into your Jellyfin plugins folder, as described in the
-   [development guide](docs/DEVELOPMENT.md#trying-it-on-a-jellyfin-server), then restart Jellyfin. (A proper
-   release and plugin repository are on the roadmap.)
+1. **Install:** in Jellyfin go to **Dashboard, Plugins, Repositories**, add this repository URL, then open the plugin
+   **Catalogue**, install **Disc Menus** and restart Jellyfin:
+
+   ```
+   https://github.com/peppy6582/jellydisc/releases/latest/download/manifest.json
+   ```
+
+   (Or build it yourself: see the [development guide](docs/DEVELOPMENT.md#trying-it-on-a-jellyfin-server).) To show the
+   **Disc Menu** button in the web client you also need the File Transformation plugin, see Requirements above.
 2. **Choose a folder for your menus:** the plugin uses a `menus` folder in its own data folder by default, or
    set the **Menus directory** on the plugin's page in the Jellyfin dashboard (**Disc Menus** in the sidebar).
 3. **Add a menu:** copy a `.menu.json` into that folder. Try one from [`examples/`](examples/README.md), or
