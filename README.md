@@ -7,6 +7,13 @@ music, transitions and scene selection, linked automatically to the movies in yo
 > Jellyfin's plugin catalogue yet, so for now you build it yourself (it takes a few minutes). It's built in
 > the open and **[help is very welcome](CONTRIBUTING.md)**.
 
+> **Heads up: this project is vibe coded.** All of the code in this repository was written by an AI (Claude, through Claude Code) while
+> [Phillip Berryman](https://github.com/peppy6582) steered. The one human-originated piece is the idea of describing disc menus as a
+> shareable **JSON schema**, which Phillip proposed and which was then built out together. The implementation, the tests, the tooling
+> and the docs are AI-generated, and no human has independently reviewed them or had them security-audited. They work (the automated
+> tests pass and the author runs the plugin on their own server), but expect rough edges and **read the code before you trust it**,
+> especially anything that handles untrusted menu files. Human reviewers and corrections are very welcome.
+
 > **Where this is going:** the goal is for **client developers**, the people who build Jellyfin apps for
 > phones, TVs, consoles and desktops, to implement support for this menu structure in their own apps, so
 > that one menu file works everywhere. A menu is plain, portable JSON with no code, and everything a client
