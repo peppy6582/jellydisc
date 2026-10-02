@@ -245,6 +245,12 @@ the live preview update beside it.
 Not in the editor yet: forms for editing properties, dragging buttons into place, uploading art or
 audio, and creating a menu from a title in the UI. See the [roadmap](ROADMAP.md).
 
+## Checking a menu from the command line
+
+`python3 tools/menucheck.py my.menu.json` checks a menu against the schema and the cross-reference rules without
+a Jellyfin server (it needs `pip install jsonschema`); `dotnet run --project tools/MenuCheck -c Release -- my.menu.json`
+checks it with the plugin's own loader. See the [development guide](DEVELOPMENT.md#checking-a-menu-file).
+
 ## Matching extras
 
 Extras are matched by `type` (Jellyfin's `ExtraType`) plus `durationSec` (within `toleranceSec`, default

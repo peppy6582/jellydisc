@@ -41,7 +41,7 @@ starting.
 3. Run the whole test suite:
    ```bash
    dotnet test Jellyfin.Plugin.DiscMenus.Tests
-   python3 tools/validate.py
+   python3 tools/validate.py && python3 -m unittest discover -s tools -p "test_*.py"
    (cd tests/js && npm test)
    ```
    The same checks run on every pull request.
