@@ -7,10 +7,40 @@ music, transitions and scene selection, linked automatically to the movies in yo
 > Jellyfin's plugin catalogue yet, so for now you build it yourself (it takes a few minutes). It's built in
 > the open and **[help is very welcome](CONTRIBUTING.md)**.
 
+> **Where this is going:** the goal is for **client developers**, the people who build Jellyfin apps for
+> phones, TVs, consoles and desktops, to implement support for this menu structure in their own apps, so
+> that one menu file works everywhere. A menu is plain, portable JSON with no code, and everything a client
+> needs is described by the [schema](schema/menu.schema.json) and served by the plugin's API. See
+> [For client developers](#for-client-developers).
+
 When you rip or buy a disc, you lose the menu: the "Play Movie / Scene Selection / Special Features" screen
 that made it feel like a *release*. This plugin brings that back. A menu is a small JSON file that describes
 the look and the structure; the plugin matches it to the right title in your library by its TMDB / IMDB id
 and links its extras for you.
+
+## Screenshots
+
+A title with a menu gets a **Disc Menu** button on its page:
+
+![A movie's details page in Jellyfin with a green "Disc Menu" button at the bottom right](docs/screenshots/title-page.jpg)
+
+The menu, with its own background, banner, text styling and sounds, navigable by mouse, keyboard, remote or
+gamepad:
+
+![The main menu: Play, Scene Selection and Special Features laid over a movie still, inside a banner](docs/screenshots/main-menu.jpg)
+
+Submenus sit in the same banner and page automatically: here **More** leads to the rest of the extras, and
+**Home** returns to the main menu:
+
+![The Special Features menu: Gag Reel, Deleted & Extended Scenes, Featurettes, Home and More](docs/screenshots/special-features.jpg)
+
+And the **Menu Editor** in the Jellyfin dashboard, with the JSON on the left and a live preview of the real
+viewer on the right:
+
+![The Menu Editor: a menu's JSON beside a live preview of its Special Features screen](docs/screenshots/menu-editor.jpg)
+
+*These screenshots show a menu built for a real film and so contain material that isn't ours; see the
+[notice](docs/screenshots/NOTICE.md). The bundled [examples](examples/README.md) use art made for this project.*
 
 ## What a menu can do
 
@@ -59,11 +89,34 @@ then refine it in the **Menu Editor** on the dashboard, which shows a live previ
 - **[Jellyfin 12 notes](docs/JELLYFIN_NOTES.md):** verified facts about writing a plugin for Jellyfin 12.
 - **[Roadmap](docs/ROADMAP.md):** what's done and what's open.
 
+## For client developers
+
+The long-term intent of this project is for **client apps to implement this menu structure natively**, so
+a menu authored once appears the same in Jellyfin's web client and in the apps people actually watch on. If
+you build or maintain a Jellyfin client, you're very welcome to take this on, and the format was designed
+with that in mind:
+
+- **Data, not code.** A menu is JSON described by [`schema/menu.schema.json`](schema/menu.schema.json).
+  Positions are percentages of the screen, so any UI toolkit can draw them; backgrounds, audio and
+  transitions are named choices rather than scripts.
+- **Server-resolved.** `GET /DiscMenus/{itemId}/Menu` returns the menu for a title with the server's item
+  ids already filled in (404 if the title has none), plus the title's chapters, trailers and theme songs
+  where the menu uses them. Playing an extra is playing an ordinary Jellyfin item. Assets are served by
+  `GET /DiscMenus/Assets/...`. Any signed-in user can call the menu endpoint.
+- **A working reference.** [`Web/discmenus.js`](Jellyfin.Plugin.DiscMenus/Web/discmenus.js) is a complete
+  implementation (layout, paging, navigation, scene selection, audio, transitions), and the suites in
+  [`tests/js/`](tests/js) pin down the behaviour precisely, so they double as test vectors.
+- **What's still missing for you:** a written client implementer's guide (response format, the paging and
+  navigation rules) and conformance tests are on the [roadmap](docs/ROADMAP.md#other-clients). If you're
+  interested, please **open an issue** so we can shape that guide around what a client actually needs; your
+  questions will drive what gets written first.
+
 ## Contributing
 
 Menus, bug reports, docs and code are all welcome. Start with **[CONTRIBUTING.md](CONTRIBUTING.md)**, and
 see the [roadmap](docs/ROADMAP.md) for open work (look for **good first**). One firm rule: never add studio
-artwork, music or video to the repository or to a shared menu.
+artwork, music or video to the plugin's examples or assets, or to a shared menu (the documentation
+screenshots are the one documented exception, see [the notice](docs/screenshots/NOTICE.md)).
 
 To report a security problem, see [SECURITY.md](SECURITY.md).
 
@@ -73,8 +126,12 @@ Copyright (C) 2026 Phillip Berryman. Licensed under the [GNU General Public Lice
 (GPL-3.0-only), the same licence as the Jellyfin packages the plugin builds on.
 
 - The code, schemas, validator, example menus, and the placeholder art and audio in `examples/assets/` (all
-  generated for this project) are covered by that licence. **Studio artwork, music and video are not
-  included and never will be**: the `thor-ragnarok` example refers to artwork it doesn't ship.
+  generated for this project) are covered by that licence. The plugin, its examples and its assets contain **no studio artwork, music or
+  video**: the `thor-ragnarok` example refers to artwork it doesn't ship.
+- **The screenshots in [`docs/screenshots/`](docs/screenshots/NOTICE.md) are an exception and are not covered
+  by the licence.** They show a menu built for a real film, so they contain stills, a poster and a menu
+  design that belong to their owners. They're there only to illustrate the plugin; if you are a rights
+  holder and want them removed, please open an issue.
 - Menus are shown through [Jellyfin](https://jellyfin.org). The web client integration depends on the
   [File Transformation](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation) plugin by
   IAmParadox27.

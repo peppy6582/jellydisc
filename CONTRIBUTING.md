@@ -20,7 +20,9 @@ starting.
 
 1. **No studio content.** Don't add studio artwork, music, video, logos or screenshots of copyrighted
    menus to the repository, an example or a menu. Use art you made or that is clearly licensed for this,
-   and say where it came from in your pull request. This is the one rule that protects the whole project.
+   and say where it came from in your pull request. This is the one rule that protects the whole project. (The
+   maintainer's documentation screenshots are the one documented exception, see
+   [the notice](docs/screenshots/NOTICE.md); screenshots you contribute should use the bundled example menus.)
 2. **Menus are untrusted input.** A menu can come from anyone, so anything read from one must be handled
    as hostile: render it as text (never HTML), build URLs only from validated pieces, and never let it
    name a file outside the assets folder. A rule belongs in **all three places** that check menus: the
