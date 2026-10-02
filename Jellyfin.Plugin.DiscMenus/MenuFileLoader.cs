@@ -229,8 +229,21 @@ public static class MenuFileLoader
         }
     }
 
-    private static readonly System.Text.RegularExpressions.Regex PlainLabel = new(
-        "^[^<>]{1,80}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+    /// <summary>
+    /// Mirrors the schema's label rule (schema $defs/label): 1-80 characters, no &lt; or &gt;. Characters are
+    /// counted as Unicode code points like JSON Schema's maxLength does, not as UTF-16 units, so a label made
+    /// of emoji isn't rejected here while the schema accepts it.
+    /// </summary>
+    private static bool IsPlainLabel(string? text)
+    {
+        if (string.IsNullOrEmpty(text) || text.Contains('<') || text.Contains('>'))
+        {
+            return false;
+        }
+
+        var characters = text.EnumerateRunes().Count();
+        return characters is >= 1 and <= 80;
+    }
 
     /// <summary>Checks one layout block (a menu's own, or the document-wide default).</summary>
     private static void ValidateLayout(string where, MenuLayout? layout, List<string> errors)
@@ -278,7 +291,7 @@ public static class MenuFileLoader
 
             foreach (var l in new[] { flow.MoreLabel, flow.PreviousLabel })
             {
-                if (l is not null && !PlainLabel.IsMatch(l))
+                if (l is not null && !IsPlainLabel(l))
                 {
                     errors.Add($"{fwhere} labels must be 1-80 characters with no < or >");
                 }
@@ -323,6 +336,11 @@ public static class MenuFileLoader
 
     private static void ValidatePresentation(string menuKey, MenuDef menu, MenuLayout? documentLayout, List<string> errors)
     {
+        if (!IsPlainLabel(menu.Title))
+        {
+            errors.Add($"menu '{menuKey}' title must be 1-80 characters with no < or >");
+        }
+
         ValidateBackground(menuKey, menu.Background, errors);
         ValidateAudio(menuKey, menu.Audio, errors);
         ValidateTheme(menuKey, menu.Theme, errors);
@@ -356,6 +374,11 @@ public static class MenuFileLoader
         {
             var e = menu.Entries[i];
             var where = $"{menuKey}[{i}]";
+            if (!IsPlainLabel(e.Label))
+            {
+                errors.Add($"{where} label must be 1-80 characters with no < or >");
+            }
+
             CheckPosition(where, e.Position, errors);
             CheckStyle(where, e.Style, errors);
             foreach (var img in new[] { e.Image, e.ImageFocus })
