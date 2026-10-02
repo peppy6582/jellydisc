@@ -150,5 +150,21 @@ const index=(entries,extra)=>(u)=>u===BASE+'v1/index.json'?{status:200,body:JSON
   w=boot(index([entry(ID1)],{withdrawn:[{menuId:ID3,date:'2026-10-02',reason:'Taken down at the rights holder\'s request.'}]}),server(s)); await start(w);
   check(cards(w).some(c=>c.textContent.includes('was withdrawn')&&c.textContent.includes('rights holder')&&!!btn(c,'Uninstall')),'an installed menu that was withdrawn is flagged, with a way to uninstall');
 
+  console.log('--- titles without special features');
+  const titles=(...ex)=>({MenuId:ID1,State:ex.length>1?'ambiguous':'bound',Titles:ex.map((n,i)=>({Id:'t'+i,Name:'T'+i,Year:2000,Extras:n}))});
+  const warns=(w)=>cards(w).some(c=>/No special features were found/.test(c.textContent));
+  const extrasCase=async(entryOver,match)=>{ const w=boot(index([entry(ID1,entryOver)]),server(state({matches:{[ID1]:match}}))); await start(w); return w; };
+  w=await extrasCase({},titles(0)); check(warns(w)&&/extras folder|"extras" folder/.test(cards(w)[0].textContent),'a matched title with no extras is flagged, and the card says how to fix it');
+  w=await extrasCase({extras:5},titles(0)); check(warns(w),'flagged when the menu lists extras');
+  w=await extrasCase({extras:0},titles(0)); check(!warns(w),'not flagged when the menu lists no extras (nothing is lost)');
+  w=await extrasCase({extras:5},titles(3)); check(!warns(w),'not flagged when the title has extras');
+  w=await extrasCase({},titles(0,0)); check(warns(w),'an ambiguous match is flagged only if none of the candidates has extras');
+  w=await extrasCase({},titles(0,2)); check(!warns(w),'an ambiguous match where one candidate has extras is not flagged');
+  w=await extrasCase({},{MenuId:ID1,State:'none',Titles:[]}); $(w,'discCatOnlyMine').checked=false; $(w,'discCatOnlyMine').dispatchEvent(new w.Event('change')); check(!warns(w),'a title that is not in the library is not flagged');
+  w=await extrasCase({},{MenuId:ID1,State:'bound',Titles:[{Id:'x',Name:'T',Year:2000}]}); check(!warns(w),'an older server that does not report extras counts is not flagged');
+  w=boot(body5,server(state({matches:{[ID1]:titles(0)}}),{'POST DiscMenus/Catalogue/Install':()=>ok({Action:'installed',Revision:1})})); await start(w);
+  btn(cards(w)[0],'Install').click(); await sleep(60);
+  check(/Installed\./.test(cards(w)[0].textContent)&&/no special features in your library yet/.test(cards(w)[0].querySelector('.discCatMsg').textContent),'installing such a menu confirms it and repeats the note');
+
   console.log('failures:',fail); process.exit(fail?1:0);
 })();

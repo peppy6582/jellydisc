@@ -21,6 +21,7 @@
                     .discCatPill.art { border-color: #e90; }
                     .discCatMatch { margin: 0.4em 0; }
                     .discCatMatch.yes { color: #5c5; }
+                    .discCatWarn { margin: 0.4em 0; color: #e90; }
                     .discCatActions { display: flex; flex-wrap: wrap; gap: 0.6em; align-items: center; margin-top: 0.6em; }
                     .discCatMsg { font-size: 0.9em; margin-top: 0.4em; }
                     .discCatMsg.error { color: #e55; }
@@ -139,6 +140,7 @@
                     description: typeof e.description === 'string' ? e.description.slice(0, 400) : '',
                     tags: Array.isArray(e.tags) ? e.tags.filter(function (t) { return typeof t === 'string'; }).slice(0, 8) : [],
                     demo: e.demo === true,
+                    extras: Number.isInteger(e.extras) && e.extras >= 0 ? e.extras : null, // how many extras the menu lists, if the index says
                     needsLocalArt: Array.isArray(e.needsLocalArt) ? e.needsLocalArt.filter(function (t) { return typeof t === 'string'; }) : [],
                     minPluginVersion: typeof e.minPluginVersion === 'string' && VERSION.test(e.minPluginVersion) ? e.minPluginVersion : '0.0.0',
                     match: { itemType: e.match.itemType, providerIds: ids }
@@ -243,6 +245,16 @@
                     : { yes: true, text: 'In your library: ' + names.join(', ') + '.' };
             }
 
+            // True when the menu is for a title in this library, the menu may list special features, and no matched title has any.
+            function lacksExtras(e) {
+                var match = state.matches[e.menuId];
+                if (!match || !match.Titles || match.Titles.length === 0 || e.extras === 0) {
+                    return false;
+                }
+
+                return match.Titles.every(function (t) { return t.Extras === 0; });
+            }
+
             function render() {
                 var query = el.search.value.trim().toLowerCase();
                 var onlyMine = el.onlyMine.checked;
@@ -314,6 +326,10 @@
 
                 var m = describeMatch(state.matches[e.menuId]);
                 node.appendChild(text('div', 'discCatMatch' + (m.yes ? ' yes' : ''), m.text));
+                if (lacksExtras(e)) {
+                    node.appendChild(text('div', 'discCatWarn', 'No special features were found for this title in your library, so the menu\'s extras would have nothing to play. Add them as Jellyfin extras (a "featurettes" or "extras" folder beside the movie) and rescan.'));
+                }
+
                 if (e.needsLocalArt.length) {
                     node.appendChild(text('div', 'fieldDescription', 'Needs these art files in assets/' + e.menuId + '/ on this server (not hosted by the catalogue): ' + e.needsLocalArt.join(', ')));
                 }
@@ -410,8 +426,9 @@
                 }).then(function (r) {
                     if (r.ok) {
                         var action = r.data && r.data.Action;
-                        return refreshAfter(entry.menuId, action === 'upgraded' ? 'Updated.' : action === 'unchanged' ? 'Already up to date.'
-                            : 'Installed. It appears on the title\'s page now.');
+                        var note = action === 'upgraded' ? 'Updated.' : action === 'unchanged' ? 'Already up to date.'
+                            : 'Installed. It appears on the title\'s page now.';
+                        return refreshAfter(entry.menuId, note + (lacksExtras(entry) ? ' Note: this title has no special features in your library yet.' : ''));
                     }
 
                     done();

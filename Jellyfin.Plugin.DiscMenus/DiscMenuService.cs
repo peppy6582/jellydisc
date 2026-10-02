@@ -182,6 +182,19 @@ public sealed class DiscMenuService : IDisposable
     /// <summary>Installs and removes menus that come from the online catalogue, in the menus folder's "catalogue" subfolder.</summary>
     public CatalogueStore CreateCatalogueStore() => new(MenusPath, AssetsPath, Path.Combine(Plugin.Instance!.DataFolderPath, "backups"));
 
+    /// <summary>How many local extras (special features) each of these library items has.</summary>
+    public IReadOnlyDictionary<Guid, int> CountLocalExtras(IEnumerable<Guid> itemIds)
+    {
+        var counts = new Dictionary<Guid, int>();
+        foreach (var id in itemIds.Distinct())
+        {
+            counts[id] = _libraryManager.GetItemList(new InternalItemsQuery { OwnerIds = new[] { id }, IncludeExtras = true })
+                .Count(i => i.OwnerId == id && i.ExtraType is not null);
+        }
+
+        return counts;
+    }
+
     /// <summary>Every movie and series in the library with its provider ids, for matching the catalogue against it.</summary>
     public IReadOnlyList<LibraryTitle> GetLibraryTitles() =>
         _libraryManager.GetItemList(new InternalItemsQuery

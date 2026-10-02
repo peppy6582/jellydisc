@@ -89,11 +89,14 @@ public sealed class DiscMenusCatalogueController : ControllerBase
         }
 
         var results = CatalogueMatching.Match(queries, _discMenuService.GetLibraryTitles());
+
+        // The matched titles' extras, so the page can say when a menu's special features would have nothing to play.
+        var extras = _discMenuService.CountLocalExtras(results.SelectMany(r => r.Titles).Select(t => t.Id));
         return Ok(results.Select(r => new
         {
             r.MenuId,
             r.State,
-            Titles = r.Titles.Select(t => new { t.Id, t.Name, t.Year }),
+            Titles = r.Titles.Select(t => new { t.Id, t.Name, t.Year, Extras = extras.GetValueOrDefault(t.Id) }),
         }));
     }
 
