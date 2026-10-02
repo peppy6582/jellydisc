@@ -21,6 +21,8 @@ jobs:
         run: dotnet build Jellyfin.Plugin.DiscMenus -c Release
       - name: Test
         run: dotnet test Jellyfin.Plugin.DiscMenus.Tests
+      - name: Check the examples with the plugin's own loader
+        run: dotnet run --project tools/MenuCheck -c Release -- examples/*.menu.json
 
   schemas:
     name: Schemas and examples
@@ -32,6 +34,10 @@ jobs:
           python-version: "3.13"
       - run: pip install jsonschema
       - run: python3 tools/validate.py
+      - name: Menu checker tests
+        run: python3 -m unittest discover -s tools -p "test_*.py"
+      - name: Check the examples with the menu checker
+        run: python3 tools/menucheck.py examples/*.menu.json
 
   browser:
     name: Browser-code tests

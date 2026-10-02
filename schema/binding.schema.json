@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/jellyfin-disc-menus/binding.schema.json",
+  "$id": "https://peppy6582.github.io/jellydisc-menus/schema/v1/binding.schema.json",
   "title": "Disc Menu Binding (local, never shared)",
   "description": "Resolves a shared menu's extra keys to this server's Jellyfin item IDs. Stored server-side by the plugin; contains local identifiers, so it is excluded from any export/share.",
   "type": "object",

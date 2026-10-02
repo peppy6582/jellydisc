@@ -4,7 +4,7 @@
 #   docker compose up -d dev                                  # .NET 10 SDK container (idles)
 #   docker compose exec dev dotnet build Jellyfin.Plugin.DiscMenus -c Release
 #   docker compose exec dev dotnet test Jellyfin.Plugin.DiscMenus.Tests
-#   docker compose run --rm validate                          # JSON Schema + example checks
+#   docker compose run --rm validate                          # JSON Schema + example checks + the menu checker's tests
 #   docker compose run --rm jstest                            # browser-code tests (Node + jsdom)
 #
 # You don't need Docker: with the .NET 10 SDK, Python 3 and Node 20+ installed you can run the same
@@ -37,7 +37,7 @@ services:
     container_name: jellyfin-disc-menus-validate
     profiles: ["tools"]
     working_dir: /workspace
-    command: sh -c "pip install --quiet jsonschema && python3 tools/validate.py"
+    command: sh -c "pip install --quiet jsonschema && python3 tools/validate.py && python3 -m unittest discover -s tools -p 'test_*.py'"
     volumes:
       - .:/workspace
       - jdm_pip:/root/.cache/pip

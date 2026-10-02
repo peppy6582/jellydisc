@@ -1,57 +1,7 @@
 import json, sys, copy, os
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-from jsonschema import Draft202012Validator, FormatChecker
-
-def load(p): return json.load(open(p))
-ms, bs = load(os.path.join(ROOT,"schema","menu.schema.json")), load(os.path.join(ROOT,"schema","binding.schema.json"))
-Draft202012Validator.check_schema(ms); Draft202012Validator.check_schema(bs)
-mv = Draft202012Validator(ms, format_checker=FormatChecker())
-bv = Draft202012Validator(bs, format_checker=FormatChecker())
-
-def semantic(m):
-    """Cross-reference checks JSON Schema can't express."""
-    errs, menus, extras = [], m["menus"], m["extras"]
-    if m["root"] not in menus: errs.append(f"root '{m['root']}' not in menus")
-    for mk, menu in menus.items():
-        for i, e in enumerate(menu["entries"]):
-            a = e["action"]
-            if a == "playExtra" and e["extra"] not in extras: errs.append(f"{mk}[{i}] unknown extra {e['extra']}")
-            if a == "playSequence":
-                errs += [f"{mk}[{i}] unknown extra {x}" for x in e["extras"] if x not in extras]
-            if a == "submenu" and e["menu"] not in menus: errs.append(f"{mk}[{i}] unknown menu {e['menu']}")
-            if a == "chapters" and e.get("menu") and e["menu"] not in menus: errs.append(f"{mk}[{i}] unknown menu {e['menu']}")
-    for mk, menu in menus.items():
-        placed = [("position" in e) for e in menu["entries"]]
-        flow = menu.get("layout", {}).get("flow") or m.get("layout", {}).get("flow")
-        if flow and any(placed):
-            errs.append(f"menu '{mk}' uses flow layout, so its entries must not have positions")
-        elif any(placed) and not all(placed):
-            errs.append(f"menu '{mk}' mixes positioned and unpositioned entries (position all or none)")
-    for mk, menu in menus.items():
-        fl = menu.get("layout", {}).get("flow") or m.get("layout", {}).get("flow")
-        if fl:
-            actions = [e["action"] for e in menu["entries"]]
-            pinned = ("back" in actions) + ("home" in actions)
-            need = max(4, pinned + 3)
-            if fl["columns"] * fl["rows"] < need:
-                errs.append(f"menu '{mk}' needs a flow grid of at least {need} cells for its pinned Back/Home plus paging buttons")
-    for where, lay in [("document", m.get("layout"))] + [(k, mn.get("layout")) for k, mn in menus.items()]:
-        fl = (lay or {}).get("flow")
-        if fl and fl["columns"] * fl["rows"] < 4:
-            errs.append(f"{where} flow needs at least 4 cells (columns x rows) to fit paging buttons")
-    seen, stack = set(), [m["root"]]
-    while stack:
-        k = stack.pop()
-        if k in seen or k not in menus: continue
-        seen.add(k)
-        stack += [e["menu"] for e in menus[k]["entries"] if e["action"] == "submenu" or (e["action"] == "chapters" and e.get("menu"))]
-    errs += [f"menu '{k}' unreachable from root" for k in menus if k not in seen]
-    return errs
-
-def check(validator, doc, sem=False):
-    errs = [e.message for e in validator.iter_errors(doc)]
-    if sem and not errs: errs = semantic(doc)
-    return errs
+# The schemas, semantic() and check() live in menucheck.py so any file can be checked; this script keeps the
+# project's own self-tests (the examples and the must-be-rejected cases).
+from menucheck import ROOT, load, ms, bs, mv, bv, semantic, check
 
 m, b = load(os.path.join(ROOT,"examples","example.menu.json")), load(os.path.join(ROOT,"examples","example.binding.json"))
 def mut(f):

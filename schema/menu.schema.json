@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/jellyfin-disc-menus/menu.schema.json",
+  "$id": "https://peppy6582.github.io/jellydisc-menus/schema/v1/menu.schema.json",
   "title": "Disc Menu Definition (shareable)",
   "description": "Portable menu definition. Anchored to a Jellyfin-matched parent item via provider IDs. Contains NO file names, paths, or local Jellyfin item IDs; those live in the separate binding file.",
   "type": "object",
