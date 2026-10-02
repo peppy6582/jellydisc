@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    name: Plugin build and C# tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build
+        run: dotnet build Jellyfin.Plugin.DiscMenus -c Release
+      - name: Test
+        run: dotnet test Jellyfin.Plugin.DiscMenus.Tests
+
+  schemas:
+    name: Schemas and examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install jsonschema
+      - run: python3 tools/validate.py
+
+  browser:
+    name: Browser-code tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/js/package-lock.json
+      - working-directory: tests/js
+        run: npm ci --no-audit --no-fund
+      - working-directory: tests/js
+        run: npm test
