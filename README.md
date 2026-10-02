@@ -88,6 +88,11 @@ To start from your own library instead, have the plugin draft a menu for a movie
 its real extras and chapters, see [Authoring menus](docs/AUTHORING.md#drafting-a-menu-from-your-library)),
 then refine it in the **Menu Editor** on the dashboard, which shows a live preview as you edit.
 
+Or take one that someone else made: the **Menu Catalogue** page on the dashboard lists the
+[community catalogue](https://peppy6582.github.io/jellydisc-menus/), shows which menus are for titles in your library, and installs
+them with one click. Your library is never sent anywhere; each menu is checked against a published fingerprint before it is
+installed.
+
 ## Documentation
 
 - **[Authoring menus](docs/AUTHORING.md):** everything a menu can contain, how discovery works, the editor.

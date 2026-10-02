@@ -50,6 +50,15 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             EnableInMainMenu = true,
             MenuSection = "server",
             MenuIcon = "edit",
+        },
+        new PluginPageInfo
+        {
+            Name = "DiscMenusCatalogue",
+            EmbeddedResourcePath = $"{GetType().Namespace}.Configuration.cataloguePage.html",
+            DisplayName = "Menu Catalogue",
+            EnableInMainMenu = true,
+            MenuSection = "server",
+            MenuIcon = "cloud_download",
         }
     ];
 }

@@ -325,3 +325,73 @@ public sealed class MenuFileEditorTests : IDisposable
         Assert.Equal(5, JsonNode.Parse(_editor.Read("a.menu.json").Json!)!["revision"]!.GetValue<int>());
     }
 }
+
+public sealed class MenuFileEditorCreateDeleteTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dm-editor-cd-" + Guid.NewGuid().ToString("N"));
+    private readonly string _menus;
+    private readonly string _backups;
+    private readonly MenuFileEditor _editor;
+
+    public MenuFileEditorCreateDeleteTests()
+    {
+        _menus = Path.Combine(_dir, "menus");
+        _backups = Path.Combine(_dir, "backups");
+        Directory.CreateDirectory(Path.Combine(_menus, "assets"));
+        _editor = new MenuFileEditor(_menus, Path.Combine(_menus, "assets"), _backups);
+    }
+
+    public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private static string ExampleJson([System.Runtime.CompilerServices.CallerFilePath] string thisFile = "") =>
+        File.ReadAllText(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "examples", "example.menu.json")));
+
+    [Fact]
+    public void CreatesANewFileInASubfolder()
+    {
+        var r = _editor.Create("sub/new.menu.json", ExampleJson());
+        Assert.Equal(EditorResultKind.Ok, r.Kind);
+        Assert.True(File.Exists(Path.Combine(_menus, "sub", "new.menu.json")));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_menus, "sub"), "*.tmp-*"));
+    }
+
+    [Fact]
+    public void NeverOverwrites()
+    {
+        _editor.Create("a.menu.json", ExampleJson());
+        Assert.Equal(EditorResultKind.Conflict, _editor.Create("a.menu.json", ExampleJson()).Kind);
+    }
+
+    [Theory]
+    [InlineData("../x.menu.json")]
+    [InlineData("sub/../../x.menu.json")]
+    [InlineData("/etc/x.menu.json")]
+    [InlineData("assets/x.menu.json")]
+    [InlineData(".hidden.menu.json")]
+    [InlineData("x.json")]
+    [InlineData("")]
+    public void RefusesNamesOutsideTheMenusFolder(string name)
+    {
+        Assert.Equal(EditorResultKind.BadName, _editor.Create(name, ExampleJson()).Kind);
+        Assert.Equal(EditorResultKind.BadName, _editor.Delete(name).Kind);
+        Assert.False(File.Exists(Path.Combine(_dir, "x.menu.json")));
+    }
+
+    [Fact]
+    public void RefusesAMenuThatWouldNotLoad()
+    {
+        var r = _editor.Create("bad.menu.json", "{ nope");
+        Assert.Equal(EditorResultKind.Invalid, r.Kind);
+        Assert.False(File.Exists(Path.Combine(_menus, "bad.menu.json")));
+    }
+
+    [Fact]
+    public void DeleteKeepsABackup()
+    {
+        _editor.Create("a.menu.json", ExampleJson());
+        Assert.Equal(EditorResultKind.Ok, _editor.Delete("a.menu.json").Kind);
+        Assert.False(File.Exists(Path.Combine(_menus, "a.menu.json")));
+        Assert.Single(Directory.GetFiles(_backups));
+        Assert.Equal(EditorResultKind.NotFound, _editor.Delete("a.menu.json").Kind);
+    }
+}

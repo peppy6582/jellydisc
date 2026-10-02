@@ -306,6 +306,111 @@ public sealed class MenuFileEditor
         return new EditorSaveResult(EditorResultKind.Ok, VersionOf(newBytes));
     }
 
+    /// <summary>
+    /// Creates a new menu file, which must not exist yet (it never overwrites). Validated exactly as a saved
+    /// menu is, written to a temporary file and moved into place, and the folders it needs are created. Used
+    /// for menus installed from the catalogue, which live in a subfolder.
+    /// </summary>
+    public EditorSaveResult Create(string? name, string json)
+    {
+        var (kind, full, error) = Resolve(name);
+        if (kind != EditorResultKind.Ok)
+        {
+            return new EditorSaveResult(kind, Error: error);
+        }
+
+        if (Encoding.UTF8.GetByteCount(json) > MaxBytes)
+        {
+            return new EditorSaveResult(EditorResultKind.TooLarge, Error: "This menu is too large.");
+        }
+
+        if (ParentEscapes(full!))
+        {
+            return new EditorSaveResult(EditorResultKind.BadName, Error: "That isn't a valid menu file name.");
+        }
+
+        if (File.Exists(full!))
+        {
+            return new EditorSaveResult(EditorResultKind.Conflict, Error: "A menu file with that name already exists.");
+        }
+
+        var errors = Validate(json);
+        if (errors.Count > 0)
+        {
+            return new EditorSaveResult(EditorResultKind.Invalid, Errors: errors);
+        }
+
+        var bytes = new UTF8Encoding(false).GetBytes(json);
+        Directory.CreateDirectory(Path.GetDirectoryName(full!)!);
+        var temp = full + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.WriteAllBytes(temp, bytes);
+            File.Move(temp, full!, overwrite: false);
+        }
+        catch (IOException) when (File.Exists(full!))
+        {
+            return new EditorSaveResult(EditorResultKind.Conflict, Error: "A menu file with that name already exists.");
+        }
+        finally
+        {
+            if (File.Exists(temp))
+            {
+                File.Delete(temp);
+            }
+        }
+
+        return new EditorSaveResult(EditorResultKind.Ok, VersionOf(bytes));
+    }
+
+    /// <summary>Removes a menu file, keeping its last content as a backup.</summary>
+    public EditorSaveResult Delete(string? name)
+    {
+        var (kind, full, error) = Resolve(name);
+        if (kind != EditorResultKind.Ok)
+        {
+            return new EditorSaveResult(kind, Error: error);
+        }
+
+        if (!File.Exists(full!) || ParentEscapes(full!))
+        {
+            return new EditorSaveResult(EditorResultKind.NotFound, Error: "No such menu file.");
+        }
+
+        Backup(name!, File.ReadAllBytes(full!));
+        File.Delete(full!);
+        return new EditorSaveResult(EditorResultKind.Ok);
+    }
+
+    // A folder inside the menus folder that is really a link to somewhere else must not become a way out of it.
+    private bool ParentEscapes(string fullPath)
+    {
+        try
+        {
+            var dir = new DirectoryInfo(Path.GetDirectoryName(fullPath)!);
+            while (dir is not null && dir.FullName.Length > _root.Length)
+            {
+                if (dir.Exists && dir.ResolveLinkTarget(returnFinalTarget: true) is { } target)
+                {
+                    var targetFull = Path.GetFullPath(target.FullName).TrimEnd(Path.DirectorySeparatorChar);
+                    if (!(targetFull + Path.DirectorySeparatorChar).StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                        || UnderAssets(targetFull + Path.DirectorySeparatorChar))
+                    {
+                        return true;
+                    }
+                }
+
+                dir = dir.Parent;
+            }
+
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+    }
+
     private void Backup(string name, byte[] content)
     {
         Directory.CreateDirectory(_backups);

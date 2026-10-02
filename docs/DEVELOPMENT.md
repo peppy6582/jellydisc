@@ -8,6 +8,7 @@ How to build, test, run and understand the project. For *using* it see the [READ
 - [Setting up](#setting-up)
 - [Running the tests](#running-the-tests)
 - [Trying it on a Jellyfin server](#trying-it-on-a-jellyfin-server)
+- [The menu catalogue page](#the-menu-catalogue-page)
 - [Working on the renderer](#working-on-the-renderer)
 - [Gotchas worth knowing](#gotchas-worth-knowing)
 
@@ -183,6 +184,26 @@ and open the title in the web client.
 **Calling the API directly:** create an API key in the Jellyfin dashboard and send it as
 `Authorization: MediaBrowser Token="<key>"`. Requests made with a key have no associated user, so
 endpoints that need one take an explicit `userId`, or fall back to the server's first user.
+
+## The menu catalogue page
+
+The dashboard's **Menu Catalogue** page (`Configuration/cataloguePage.html`) installs menus from the public catalogue
+([jellydisc-menus](https://github.com/peppy6582/jellydisc-menus)). The trust boundaries are the point of the design:
+
+- **The browser fetches, the server never does.** The page downloads `v1/index.json` and each menu file itself, from one
+  pinned address (the index's own `baseUrl` is ignored, so a tampered index can't redirect a download). The server makes no
+  outgoing request.
+- **Nothing about the library leaves the server.** `POST DiscMenus/Catalogue/Match` takes the index's ids, matches them with
+  the same rule as automatic discovery (`CatalogueMatching`, which uses `MenuDiscovery.Decide`) and answers locally.
+- **The server re-checks everything** (`CatalogueStore`): the body must hash to the index's sha256 (sent with the request), must
+  load through `MenuFileLoader`, and is size-limited. Files go in `<menus>/catalogue/<menuId>.menu.json` with a
+  `<menuId>.source.json` record of what was installed. A menu already in the folder by hand (same `menuId`) is never
+  overwritten, nor is one that was edited after installing; an upgrade must be a newer revision; uninstall only touches what
+  was installed from the catalogue, and keeps a backup. All routes are admin-only.
+- **Everything shown from the index is set as text**, and entries of an unexpected shape are dropped.
+
+`MenuFileEditor.Create` and `Delete` are the new file operations (create never overwrites; both refuse links that lead out of
+the menus folder). Tests: `CatalogueStoreTests.cs`, `tests/js/catalogue.test.js`.
 
 ## Working on the renderer
 

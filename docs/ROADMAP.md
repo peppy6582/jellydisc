@@ -16,6 +16,9 @@ Working today, on Jellyfin 12.x with the web client:
   id and its extras are matched by duration.
 - **Drafts:** a starter menu generated from a title's real extras and chapters.
 - A **Menu Editor** on the dashboard with a live preview of the real renderer.
+- A **Menu Catalogue** page on the dashboard: browse the community catalogue ([jellydisc-menus](https://github.com/peppy6582/jellydisc-menus),
+  public-domain JSON), see which menus are for titles in your library, and install, update or remove them. Your
+  library is never sent anywhere (see [the design](DEVELOPMENT.md#the-menu-catalogue-page)).
 
 ## Open work
 
@@ -45,8 +48,8 @@ Working today, on Jellyfin 12.x with the web client:
   See "Other clients" below. **big**
 
 ### Sharing
-- A catalogue of shared menus (a repository of JSON keyed by TMDB id and edition) and "install this menu" from
-  a title's page, matched locally so a library is never sent anywhere. **big**
+- "Install this menu" from a title's own page (the catalogue page on the dashboard exists; this would bring it to where the
+  title is shown).
 - An export that strips anything local before sharing, plus a checker for the rules in
   [Authoring menus](AUTHORING.md#rules-for-shareable-menus).
 - An allowlist of image hosts for shared menus, and a menu contribution policy.

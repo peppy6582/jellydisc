@@ -179,6 +179,20 @@ public sealed class DiscMenuService : IDisposable
     /// <summary>The menu editor's file access, pointed at the current menus folder and the plugin's backup folder.</summary>
     public MenuFileEditor CreateEditor() => new(MenusPath, AssetsPath, Path.Combine(Plugin.Instance!.DataFolderPath, "backups"));
 
+    /// <summary>Installs and removes menus that come from the online catalogue, in the menus folder's "catalogue" subfolder.</summary>
+    public CatalogueStore CreateCatalogueStore() => new(MenusPath, AssetsPath, Path.Combine(Plugin.Instance!.DataFolderPath, "backups"));
+
+    /// <summary>Every movie and series in the library with its provider ids, for matching the catalogue against it.</summary>
+    public IReadOnlyList<LibraryTitle> GetLibraryTitles() =>
+        _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series },
+            Recursive = true,
+            IsVirtualItem = false,
+        })
+        .Select(i => new LibraryTitle(i.Id, i.Name, i.ProductionYear, i is MediaBrowser.Controller.Entities.Movies.Movie, ProviderIdsOf(i)))
+        .ToList();
+
     /// <summary>Called after the editor writes a file, so the discovery index is rebuilt on next use.</summary>
     public void NotifyFilesChanged() => InvalidateSnapshot();
 
