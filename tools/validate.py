@@ -71,6 +71,14 @@ neg = {
   "tmdb path traversal": mut(lambda d: d.update(background={"source":"tmdb","tmdbFilePath":"/../etc/passwd.jpg"})),
   "tmdb path is a url": mut(lambda d: d.update(background={"source":"tmdb","tmdbFilePath":"https://evil.example/a.jpg"})),
   "tmdb size unknown": mut(lambda d: d.update(background={"source":"tmdb","tmdbFilePath":"/abc.jpg","tmdbSize":"w99999"})),
+  "fanart without id": mut(lambda d: d.update(background={"source":"fanart"})),
+  "fanart id has letters": mut(lambda d: d.update(background={"source":"fanart","fanartId":"12ab"})),
+  "fanart id is empty": mut(lambda d: d.update(background={"source":"fanart","fanartId":""})),
+  "fanart id is too long": mut(lambda d: d.update(background={"source":"fanart","fanartId":"1234567890123"})),
+  "fanart id is a path": mut(lambda d: d.update(background={"source":"fanart","fanartId":"../1"})),
+  "fanart id is a url": mut(lambda d: d.update(background={"source":"fanart","fanartId":"https://assets.fanart.tv/a.jpg"})),
+  "fanart id is a number, not text": mut(lambda d: d.update(background={"source":"fanart","fanartId":47835})),
+  "fanart on a page without id": mut(lambda d: d["menus"]["main"].update(background={"source":"fanart","dim":0.3})),
   "bad uuid": mut(lambda d: d.update(menuId="not-a-uuid")),
 }
 ok = True

@@ -195,6 +195,16 @@ public sealed class DiscMenuService : IDisposable
         return counts;
     }
 
+    /// <summary>The fanart.tv title a library item corresponds to (movies by TMDB id, series and seasons by TVDB id), if it has one.</summary>
+    public Fanart.FanartTarget? GetFanartTarget(Guid itemId) => _libraryManager.GetItemById(itemId) switch
+    {
+        MediaBrowser.Controller.Entities.Movies.Movie m => Fanart.FanartTarget.For("Movie", ProviderIdsOf(m), null),
+        MediaBrowser.Controller.Entities.TV.Series s => Fanart.FanartTarget.For("Series", ProviderIdsOf(s), null),
+        MediaBrowser.Controller.Entities.TV.Season season when _libraryManager.GetItemById(season.ParentId) is { } series
+            => Fanart.FanartTarget.For("Season", null, ProviderIdsOf(series)),
+        _ => null,
+    };
+
     /// <summary>Every movie and series in the library with its provider ids, for matching the catalogue against it.</summary>
     public IReadOnlyList<LibraryTitle> GetLibraryTitles() =>
         _libraryManager.GetItemList(new InternalItemsQuery

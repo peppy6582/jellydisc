@@ -317,9 +317,9 @@
           "enum": ["w780", "w1280", "original"]
         },
         "fanartId": {
-          "description": "For source=fanart: fanart.tv image id.",
+          "description": "For source=fanart: the numeric id of an image in fanart.tv's listing for the title (1 to 12 digits). The Jellyfin server looks it up with its administrator's fanart.tv API key and serves it, so viewers never contact fanart.tv; without a key, or for an unknown id, the page shows plain dark. List a library title's ids with GET /DiscMenus/Fanart/List/{itemId}.",
           "type": "string",
-          "pattern": "^[0-9]+$"
+          "pattern": "^[0-9]{1,12}$"
         },
         "color": {
           "description": "For source=color, or as a fallback tint.",

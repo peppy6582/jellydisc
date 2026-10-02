@@ -39,6 +39,10 @@ MUTANTS = [
     ("image allows svg data", ["(?:png|jpeg|webp)"], ["(?:png|jpeg|webp|svg\\+xml)"]),
     ("image allows http", ["https://[^"], ["https?://[^"]),
     ("asset segments may be 65 long", ["{0,63}"], ["{0,64}"]),
+    ("fanart id allows 13 digits", ["[0-9]{1,12}"], ["[0-9]{1,13}"]),
+    ("fanart id may be empty", ["[0-9]{1,12}"], ["[0-9]{0,12}"]),
+    ("fanart id allows letters", ["^[0-9]{1,12}"], ["^[0-9a-f]{1,12}"]),
+    ("item id allows a path", ["[0-9a-fA-F-]{32,36}"], ["[0-9a-fA-F/.-]{32,40}"]),
     ("asset depth 4 -> 5", ["{{0,3}})"], ["{{0,4}})"]),
     ("audio allows any asset extension", ["\\.(?:mp3|ogg|opus|m4a|wav)"], ["(?:\\.[a-z0-9]+)?"]),
 ]

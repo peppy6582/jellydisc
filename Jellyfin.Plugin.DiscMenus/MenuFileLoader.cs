@@ -165,6 +165,9 @@ public static class MenuFileLoader
         }
     }
 
+    private static readonly System.Text.RegularExpressions.Regex FanartId = new(
+        "^[0-9]{1,12}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static readonly System.Text.RegularExpressions.Regex TmdbPath = new(
         "^/[A-Za-z0-9_-]+\\.(jpg|png)$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
@@ -186,6 +189,11 @@ public static class MenuFileLoader
             {
                 errors.Add($"{where} background tmdbSize must be w780, w1280 or original");
             }
+        }
+
+        if (b is { Source: BackgroundSource.Fanart } && (b.FanartId is null || !FanartId.IsMatch(b.FanartId)))
+        {
+            errors.Add($"{where} background fanartId must be fanart.tv's numeric image id (1 to 12 digits)");
         }
 
         if (b?.Poster is not null && !ImageRef.IsMatch(b.Poster))

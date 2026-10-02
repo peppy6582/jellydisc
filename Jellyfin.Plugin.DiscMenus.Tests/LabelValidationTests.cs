@@ -94,3 +94,35 @@ public class LabelValidationTests
         }
     }
 }
+
+public class FanartBackgroundValidationTests
+{
+    private static string Menu(string background) => """
+        {"schemaVersion":1,"menuId":"a7c1e3f2-5b84-4d96-8e21-3f0c9d5a6b47","revision":1,
+         "match":{"itemType":"Movie","providerIds":{"Tmdb":"603"}},
+         "background":BACKGROUND,
+         "root":"main","menus":{"main":{"title":"Main","entries":[{"action":"playFeature","label":"Play"}]}}}
+        """.Replace("BACKGROUND", background);
+
+    [Theory]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"47835\"}")]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"1\",\"dim\":0.5}")]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"123456789012\"}")]
+    public void AFanartBackgroundWithANumericIdLoads(string background) =>
+        Assert.Empty(MenuFileEditor.Validate(Menu(background)));
+
+    [Theory]
+    [InlineData("{\"source\":\"fanart\"}")]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"\"}")]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"12ab\"}")]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"1234567890123\"}")]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"../1\"}")]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"1 \"}")]
+    [InlineData("{\"source\":\"fanart\",\"fanartId\":\"https://assets.fanart.tv/a.jpg\"}")]
+    public void AFanartBackgroundWithoutAValidIdIsRefused(string background)
+    {
+        var errors = MenuFileEditor.Validate(Menu(background));
+        Assert.NotEmpty(errors);
+        Assert.Contains(errors, e => e.Message.Contains("fanartId", StringComparison.Ordinal) || e.Message.Contains("JSON", StringComparison.Ordinal));
+    }
+}

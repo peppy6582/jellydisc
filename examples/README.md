@@ -8,6 +8,7 @@ listings.
 | File | Background | Shows off |
 |---|---|---|
 | [`example.menu.json`](example.menu.json) | the title's Jellyfin backdrop | the original minimal example, paired with [`example.binding.json`](example.binding.json) |
+| [`fanart-background.menu.json`](fanart-background.menu.json) | **fanart.tv** pictures as backgrounds, one per page | the server looks the picture up with the administrator's fanart.tv key and serves it (needs a key and real ids: the ones here are placeholders) |
 | [`static-backdrop.menu.json`](static-backdrop.menu.json) | **static**: Jellyfin backdrop, dimmed | the simplest menu: a plain list of buttons, no art files; fade transitions, click sounds |
 | [`solid-color-glow.menu.json`](solid-color-glow.menu.json) | **solid colour** | hand-placed centred buttons, serif/uppercase text with a glow highlight, three menu levels with both `back` and `home`; slide transitions, chime sounds |
 | [`trailer-background.menu.json`](trailer-background.menu.json) | **trailer video** (looping, muted) | a translucent bar layer, buttons inside it, an automatic paged grid (More / Previous) with Home pinned; wipe transitions, beep sounds, the item's Jellyfin theme song as music |

@@ -94,6 +94,7 @@ Everything here is optional and additive, so simpler menus keep working.
 |---|---|---|
 | `jellyfin` | One of the title's own Jellyfin images | `imageType` (e.g. `Backdrop`), `index` |
 | `tmdb` | A TMDB backdrop, fetched from TMDB's image server | `tmdbFilePath` (`/abc123.jpg`), `tmdbSize` (`w780`, `w1280` default, `original`) |
+| `fanart` | A picture from [fanart.tv](https://fanart.tv), looked up and served by your Jellyfin server | `fanartId`: fanart.tv's numeric image id (needs the server's fanart.tv key, see below) |
 | `image` | Your own picture | `image`: an `asset:` reference or `https://` URL |
 | `color` | A flat colour | `color` |
 | `trailer` | The title's own trailer, looping behind the menu | `trailerIndex`, `muted`, `poster` |
@@ -101,6 +102,19 @@ Everything here is optional and additive, so simpler menus keep working.
 All accept `dim` (0-1) to darken the picture for legibility. Different menus can have different
 backgrounds; the renderer preloads them and crossfades between them. A title's TMDB backdrops can be
 listed with `GET /Items/{id}/RemoteImages?type=Backdrop&providerName=TheMovieDb`.
+
+**fanart.tv backgrounds.** `fanart` shows a picture from fanart.tv's artwork for the title: backgrounds, but also logos, clear art, discs and banners. Unlike `tmdb`, it is the **server**
+that fetches it, with the administrator's own free fanart.tv API key (Dashboard, Disc Menus, *fanart.tv API key*), and keeps a copy in its cache; viewers never contact fanart.tv. That makes it
+work for any client that asks the server, and keeps fanart.tv's traffic and the key on your server. Details:
+
+- **Finding an id.** `fanartId` is the numeric image id from fanart.tv's listing. For a title in your library, ask the server (as an administrator):
+  `GET /DiscMenus/Fanart/List/{itemId}` lists every picture's `Id`, `Category` (such as `moviebackground` or `hdmovielogo`), language and likes.
+  Movies are looked up by their TMDB id and series and seasons by their series' TVDB id, so the title needs one.
+- **Without a key**, or for an id fanart.tv doesn't have for that title, the page shows the plain dark background. A shared menu that uses `fanart` works for anyone who has set a key.
+- **The key** is stored in the plugin's settings, sent only to fanart.tv's API (in a header, never in a link, so it cannot appear in a log), never shown again in the page and never sent to a client.
+  The *Test the saved key* button checks it. fanart.tv's own terms apply to your use of their service.
+- **Safety.** Only pictures on fanart.tv's own image host are fetched; each is size-limited and checked to really be an image before it is kept or served.
+  `GET /DiscMenus/Fanart/{itemId}/{imageId}` is how a client gets one (it needs no sign-in, like the asset route, and answers a plain 404 for anything it can't serve).
 
 **Trailer backgrounds.** `trailerIndex` (default 0) counts the title's local trailer files first, then
 the YouTube trailers Jellyfin has stored for it. YouTube trailers play in a muted, looping, borderless
@@ -162,7 +176,8 @@ loader and the browser both re-check everything, and a menu can contain data but
   menu should be layout plus ids.
 - **Privacy.** An `https://` image or audio file is fetched by the viewer's browser from that host, so the
   host sees the viewer's IP address; use `asset:` files, `data:` icons or the title's own Jellyfin images
-  if that matters. TMDB images and YouTube trailers are likewise fetched from those services.
+  if that matters. TMDB images and YouTube trailers are likewise fetched from those services. `fanart` pictures are the exception:
+  your server fetches them, so viewers never contact fanart.tv.
 - **Assets** live in `<menus folder>/assets/<folder>/` and are served (images and audio only, no path
   escapes) by `GET /DiscMenus/Assets/<folder>/<file>`.
 

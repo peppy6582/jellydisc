@@ -16,6 +16,23 @@
                             Empty uses a "menus" folder under the plugin's data folder.
                         </div>
                     </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="FanartApiKey">fanart.tv API key (optional)</label>
+                        <input id="FanartApiKey" name="FanartApiKey" type="password" is="emby-input" autocomplete="off" />
+                        <div class="fieldDescription">
+                            Only needed for menus whose background is a <em>fanart</em> picture. Get a free key from your
+                            fanart.tv account. The server uses it to look pictures up and keep a copy: viewers never contact
+                            fanart.tv, and the key is never shown again, put in a link or sent to a client. Leave this empty to
+                            keep the saved key. <strong id="FanartKeyState"></strong>
+                        </div>
+                        <button id="FanartTestButton" is="emby-button" type="button" class="raised">
+                            <span>Test the saved key</span>
+                        </button>
+                        <button id="FanartClearButton" is="emby-button" type="button" class="raised">
+                            <span>Remove the saved key</span>
+                        </button>
+                        <span id="FanartTestResult" class="fieldDescription" aria-live="polite"></span>
+                    </div>
                     <button is="emby-button" type="submit" class="raised button-submit block">
                         <span>Save</span>
                     </button>
@@ -80,21 +97,62 @@
                 return div.innerHTML;
             }
 
+            // The saved fanart.tv key is never put back in the page: the field stays empty, and only whether a key
+            // exists is shown. Leaving it empty keeps the saved key; typing one replaces it; "Remove" clears it.
+            function showFanartState(page) {
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('DiscMenus/Fanart/Status'), dataType: 'json' }).then(function (r) {
+                    page.querySelector('#FanartKeyState').textContent = r && r.Configured ? 'A key is saved.' : 'No key is saved.';
+                }, function () {
+                    page.querySelector('#FanartKeyState').textContent = '';
+                });
+            }
+
             function loadConfig(page) {
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     page.querySelector('#MenusPath').value = config.MenusPath || '';
+                    page.querySelector('#FanartApiKey').value = '';
                     Dashboard.hideLoadingMsg();
                 });
+                showFanartState(page);
             }
 
-            function saveConfig(page) {
+            function saveConfig(page, clearKey) {
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     config.MenusPath = page.querySelector('#MenusPath').value;
+                    var typed = page.querySelector('#FanartApiKey').value.trim();
+                    if (clearKey) {
+                        config.FanartApiKey = '';
+                    } else if (typed) {
+                        config.FanartApiKey = typed;
+                    }
+
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        page.querySelector('#FanartApiKey').value = '';
+                        page.querySelector('#FanartTestResult').textContent = '';
+                        showFanartState(page);
                         Dashboard.processPluginConfigurationUpdateResult(result);
                     });
+                });
+            }
+
+            var FANART_TEST_RESULTS = {
+                Ok: 'The key works.',
+                NoKey: 'No key is saved.',
+                BadKey: 'fanart.tv rejected the key. Check it and save again.',
+                RateLimited: 'fanart.tv asked us to slow down. Try again in a minute.',
+                NotFound: 'fanart.tv answered, but had nothing for the test title.',
+                Unavailable: 'fanart.tv could not be reached.'
+            };
+
+            function testFanartKey(page) {
+                var out = page.querySelector('#FanartTestResult');
+                out.textContent = 'Asking fanart.tv…';
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('DiscMenus/Fanart/Test'), dataType: 'json' }).then(function (r) {
+                    out.textContent = FANART_TEST_RESULTS[r && r.Status] || 'fanart.tv gave an answer this page does not understand.';
+                }, function () {
+                    out.textContent = 'The test could not be run. See the server log.';
                 });
             }
 
@@ -322,6 +380,16 @@
                 var detailsButton = e.target.closest('button[data-details]');
                 if (detailsButton) {
                     toggleDetail(page, detailsButton, detailsButton.getAttribute('data-details'));
+                }
+            });
+
+            document.querySelector('#FanartTestButton').addEventListener('click', function () {
+                testFanartKey(document.querySelector('#DiscMenusConfigPage'));
+            });
+
+            document.querySelector('#FanartClearButton').addEventListener('click', function () {
+                if (window.confirm('Remove the saved fanart.tv key? Menus that use fanart pictures will show a plain dark background.')) {
+                    saveConfig(document.querySelector('#DiscMenusConfigPage'), true);
                 }
             });
 

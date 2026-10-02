@@ -74,7 +74,7 @@ for c in load("time-format.json")["cases"]:
     if dm.format_ticks(c["ticks"]) != c["text"]:
         fail("time", c)
 
-PATTERNS = {"image": dm.SAFE_IMAGE, "audio": dm.SAFE_AUDIO, "colour": dm.HEX_COLOUR, "tmdb": dm.TMDB_PATH}
+PATTERNS = {"image": dm.SAFE_IMAGE, "audio": dm.SAFE_AUDIO, "colour": dm.HEX_COLOUR, "tmdb": dm.TMDB_PATH, "fanartId": dm.FANART_ID, "itemId": dm.ITEM_ID}
 for c in load("safety.json")["cases"]:
     checked += 1
     if bool(PATTERNS[c["kind"]].match(c["value"])) != c["accepted"]:

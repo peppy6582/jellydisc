@@ -86,6 +86,12 @@ audio. It supports HTTP range requests and revalidation (`Cache-Control: no-cach
 
 A `tmdb` background is fetched from `image.tmdb.org` ([§5.1](#51-backgrounds)). Other pictures are `https` links or inline data ([§4.8](#48-untrusted-data)).
 
+### `GET /DiscMenus/Fanart/{itemId}/{imageId}`
+
+For a `fanart` background. `itemId` is the item you asked for the menu of (a GUID) and `imageId` the background's `FanartId` (1 to 12 digits; validate both before building the URL). The server looks the picture up on
+fanart.tv with its administrator's key, keeps a copy, and returns the image (`image/jpeg`, `image/png` or `image/webp`, `Cache-Control: public, max-age=86400`). **It needs no authentication** (like the asset route), and answers
+a plain **404** for everything else: no key set, no such picture, fanart.tv unreachable, an item that has no usable id. Treat a 404 as "show the plain background", never as an error to display.
+
 ## 3. The document
 
 The tables list every property the server can send. "Required" means always present; everything else is omitted when not set. Percentages
@@ -175,7 +181,7 @@ produced by the client for chapter buttons; **ignore any `ThumbUrl` that arrives
 | `Image` | for `image`: a picture reference |
 | `Color` | for `color`: `#rrggbb` |
 | `TrailerIndex`, `Muted`, `Poster` | for `trailer`: index into `Trailers` (default 0), muted (default **true**), a picture shown until the video plays |
-| `FanartId` | for `fanart`, which the reference does not implement |
+| `FanartId` | for `fanart`: fanart.tv's numeric image id, 1 to 12 digits |
 
 | Theme | |
 |---|---|
@@ -411,10 +417,11 @@ A menu is data **anyone can write**. Treat every string as hostile:
   starting with a letter or digit (so no `..`). Resolve `asset:` to `/DiscMenus/Assets/…`. Anything else: ignore it.
 - **Audio** files: an `https://` URL as above, or an `asset:` reference ending in `.mp3 .ogg .opus .m4a` or `.wav`. No `data:` audio.
 - **Colours** are exactly `#rrggbb` (six hex digits; not `#rgb`, not names, not `rgb()`); otherwise use the default.
+- **fanart ids** (`FanartId`) are 1 to 12 ASCII digits and nothing else, and the item id you put in the `/DiscMenus/Fanart/` path must be a GUID (32 to 36 hex digits and hyphens). Validate both before building the URL.
 - **TMDB paths** match `^/[A-Za-z0-9_-]+\.(jpg|png)$` and the URL is built as `https://image.tmdb.org/t/p/{size}{path}`.
 - **Numbers** must be numbers and finite; clamp where a range is given.
 
-The exact accept/reject cases are in [`safety.json`](../conformance/safety.json). Matching is against the **whole** string.
+The exact accept/reject cases (including the fanart id and item id) are in [`safety.json`](../conformance/safety.json). Matching is against the **whole** string.
 
 ## 5. Look and sound
 
@@ -425,7 +432,8 @@ CSS unit, the unit is given so you can translate: **vh** is 1% of the screen hei
 
 | `Source` | Draw |
 |---|---|
-| none given, or unknown/`fanart` | flat `#101010` (`fanart` is accepted by the format but **not implemented**) |
+| none given, or unknown | flat `#101010` |
+| `fanart` | `GET /DiscMenus/Fanart/{item}/{FanartId}` (the server looks the picture up and serves it; see [§2](#2-talking-to-the-server)), as `image`. A `404` (no key configured, unknown id) means flat `#101010`. Never contact fanart.tv yourself |
 | `color` | `Color` flat (`#101010` if invalid) |
 | `image` | the picture, **cover**-fitted and centred over `#101010`, with a black layer of alpha `Dim` (default 0.4) on top |
 | `jellyfin` | `/Items/{item}/Images/{ImageType or Backdrop}/{Index or 0}`, as `image` |
@@ -534,7 +542,7 @@ for every small mistake tried (a wrong constant, a dropped rule). That is the ev
 
 ## 8. Known gaps, ambiguities and compatibility
 
-- **`fanart` backgrounds** are accepted by the format but not implemented anywhere yet. `Theme.Id` is informational only.
+- **`fanart` backgrounds** need the server administrator to have set a fanart.tv key; without one every `fanart` page shows plain dark. `Theme.Id` is informational only.
 - **No version field on the resolved document.** Ignore unknown properties and treat unknown enum values as defaults; the menu *file* carries `schemaVersion`, which the server handles for you.
 - **The server does not check that the signed-in user may see the item** before returning its menu: the menu holds no secrets (titles, ids and layout), but treat it as presentation only, and let normal item permissions govern playback.
 - **A `back` button on the root screen closes the menu** (in the reference); decide what your platform expects there.

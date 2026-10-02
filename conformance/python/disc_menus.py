@@ -159,3 +159,6 @@ SAFE_IMAGE = re.compile(rf"^(?:{_HTTPS}|data:image/(?:png|jpeg|webp);base64,[A-Z
 SAFE_AUDIO = re.compile(rf"^(?:{_HTTPS}|asset:{_SEG}(?:/{_SEG}){{0,3}}\.(?:mp3|ogg|opus|m4a|wav))\Z")
 HEX_COLOUR = re.compile(r"^#[0-9a-fA-F]{6}\Z")
 TMDB_PATH = re.compile(r"^/[A-Za-z0-9_-]+\.(?:jpg|png)\Z")
+
+FANART_ID = re.compile(r"^[0-9]{1,12}\Z", re.ASCII)
+ITEM_ID = re.compile(r"^[0-9a-fA-F-]{32,36}\Z")

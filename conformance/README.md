@@ -12,10 +12,10 @@ line. Compare numbers within **1e-6**.
 |---|---|---|
 | [`paginate.json`](paginate.json) | 318 | entries and a grid size → the pages: content labels, pinned buttons, whether Previous / More appear |
 | [`cells.json`](cells.json) | 163 | a `Layout.Flow`, a cell number, tall or not → the cell's `Position` |
-| [`layout.json`](layout.json) | 25 | a screen of a sample document (see [`documents/`](documents)), a page → the merged layout and every entry's final `Position`, in drawing order |
+| [`layout.json`](layout.json) | 27 | a screen of a sample document (see [`documents/`](documents)), a page → the merged layout and every entry's final `Position`, in drawing order |
 | [`focus.json`](focus.json) | 62 | button rectangles and a focused one → which button each direction (right, left, down, up) moves focus to |
 | [`time-format.json`](time-format.json) | 14 | Jellyfin ticks → the chapter time text |
-| [`safety.json`](safety.json) | 66 | a string from untrusted menu data, and what it is meant to be (image, audio, colour, TMDB path) → accepted or not |
+| [`safety.json`](safety.json) | 90 | a string from untrusted menu data, and what it is meant to be (image, audio, colour, TMDB path, fanart id, item id) → accepted or not |
 
 [`documents/`](documents) contains resolved documents: the golden outputs of the server's builder for the example menus, plus `layout-stress.renderable.json`, built to
 exercise inheritance, paging with pinned buttons, `MaxPerPage` and artwork cells.

@@ -27,7 +27,7 @@ if (!src.includes(MARK)) throw new Error('the renderer no longer ends with its l
 src = src.replace(MARK, `global.__t = {
     paginate: paginate, cellPosition: cellPosition, moveFocus: moveFocus, entriesForPage: entriesForPage,
     effectiveLayout: effectiveLayout, formatTicks: formatTicks,
-    SAFE_IMAGE: SAFE_IMAGE, SAFE_AUDIO: SAFE_AUDIO, TMDB_PATH: TMDB_PATH, HEX_COLOR: HEX_COLOR,
+    SAFE_IMAGE: SAFE_IMAGE, SAFE_AUDIO: SAFE_AUDIO, TMDB_PATH: TMDB_PATH, HEX_COLOR: HEX_COLOR, FANART_ID: FANART_ID, ITEM_ID: ITEM_ID,
     setDoc: function (d) { menuDoc = d; menuPage = {}; }, setPage: function (k, p) { menuPage[k] = p; }
 };`);
 (0, eval)(src);
@@ -235,17 +235,21 @@ fs.writeFileSync(path.join(OUT, 'documents', 'layout-stress.renderable.json'), J
     const audio = ['https://example.com/a.mp3', 'https://example.com/anything', 'asset:menu/loop.wav', 'asset:menu/loop.ogg', 'asset:menu/loop.opus', 'asset:menu/loop.m4a', 'asset:menu/loop.mp3',
         'asset:menu/loop.flac', 'asset:menu/loop', 'asset:menu/loop.WAV', 'asset:a/b/c/d.mp3', 'asset:../x.mp3', 'data:audio/wav;base64,AAAA', 'http://example.com/a.mp3', 'javascript:alert(1)'];
     const colours = ['#3ddc84', '#FFFFFF', '#abcdef', '#fff', '#12345', '#1234567', '3ddc84', 'red', 'rgb(0,0,0)', '#ggg000', '', '#3ddc84 '];
+    const fanart = ['47835', '1', '123456789012', '1234567890123', '', '-1', '1.5', '12a', ' 1', '1 ', '١٢٣', '0x10', '1e5', '../1', '1/2'];
+    const item = ['0b311cdd-e7c2-4e27-b4bc-fb1e5acebfc8', '0b311cdde7c24e27b4bcfb1e5acebfc8', 'preview', '', '../../etc', '0b311cdd-e7c2-4e27-b4bc-fb1e5acebfc8/x', '0b311cdd/e7c2/4e27/b4bc/fb1e5acebfc8', '0b311cdd.e7c2.4e27.b4bc.fb1e5acebfc8', '0B311CDD-E7C2-4E27-B4BC-FB1E5ACEBFC8'];
     const tmdb = ['/abc123.jpg', '/a-b_c.png', '/abc.gif', '/abc.JPG', 'abc.jpg', '/../abc.jpg', '/a/b.jpg', '/abc.jpg?x=1', ''];
     outputs.push(file('safety.json',
         'Which references from an untrusted menu a client must accept. "image" applies to Image, ImageFocus, Poster and layer/background images (https, small base64 data: ' +
         'images of png/jpeg/webp, or an asset: reference of 1-4 segments of 1-64 characters from A-Za-z0-9._- starting with a letter or digit); "audio" to music and sound files ' +
-        '(https, or an asset: reference ending in .mp3 .ogg .opus .m4a or .wav); "colour" to every colour (exactly #rrggbb); "tmdb" to Background.TmdbFilePath. ' +
+        '(https, or an asset: reference ending in .mp3 .ogg .opus .m4a or .wav); "colour" to every colour (exactly #rrggbb); "tmdb" to Background.TmdbFilePath; "fanartId" to Background.FanartId (1 to 12 ASCII digits); "itemId" to the library item id put into the fanart path (a GUID, with or without hyphens). ' +
         'Everything not accepted must be ignored (use the default), never fetched or displayed. Matching is against the WHOLE string.',
         [].concat(
             images.map((v) => ({ kind: 'image', value: v, accepted: T.SAFE_IMAGE.test(v) })),
             audio.map((v) => ({ kind: 'audio', value: v, accepted: T.SAFE_AUDIO.test(v) })),
             colours.map((v) => ({ kind: 'colour', value: v, accepted: T.HEX_COLOR.test(v) })),
-            tmdb.map((v) => ({ kind: 'tmdb', value: v, accepted: T.TMDB_PATH.test(v) })))));
+            tmdb.map((v) => ({ kind: 'tmdb', value: v, accepted: T.TMDB_PATH.test(v) })),
+            fanart.map((v) => ({ kind: 'fanartId', value: v, accepted: T.FANART_ID.test(v) })),
+            item.map((v) => ({ kind: 'itemId', value: v, accepted: T.ITEM_ID.test(v) })))));
 }
 
 // ---- write or check --------------------------------------------------------------------------------------------------

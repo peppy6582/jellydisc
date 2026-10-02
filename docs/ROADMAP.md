@@ -42,7 +42,7 @@ Working today, on Jellyfin 12.x with the web client:
 ### Rendering
 - Looping video from a file in the assets folder as a background.
 - A trailer `poster` taken from a Jellyfin image (today only an `asset:` or `https` image).
-- `fanart` backgrounds (the schema accepts them; the renderer shows a dark screen).
+- A picker for fanart.tv pictures in the Menu Editor (today you list ids with `GET /DiscMenus/Fanart/List/{itemId}` and paste one in).
 - An accessibility pass: screen-reader announcements, focus order, contrast checks. **good first**
 - Clients other than the web client: the menu format is client-agnostic, but only jellyfin-web renders it.
   See "Other clients" below. **big**
