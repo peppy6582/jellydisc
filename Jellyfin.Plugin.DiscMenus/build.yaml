@@ -1,6 +1,6 @@
 name: "Disc Menus"
 guid: "913b9d44-cafe-4fe7-ae0b-f1362dc12cc7"
-version: "0.2.0.0"
+version: "0.3.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 owner: "peppy6582"
@@ -16,6 +16,10 @@ category: "General"
 artifacts:
   - "Jellyfin.Plugin.DiscMenus.dll"
 changelog: >
+  - 0.3.0.0: Menu Editor: create a menu for a title in your library, duplicate or delete a menu, and list and
+    restore earlier saved versions. Editing from the editor now changes the text in place, so formatting is
+    kept and undo works step by step. A key repeated within one menu is now an error instead of silently
+    using the last one.
   - 0.2.0.0: A Menu Catalogue page in the dashboard to browse, install, update and remove menus from the
     community catalogue (your library is never sent anywhere; every menu is checked against a published
     fingerprint). fanart.tv backgrounds, looked up and served by your own server with your own API key, and a
