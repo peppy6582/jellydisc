@@ -23,8 +23,7 @@ Working today, on Jellyfin 12.x with the web client:
 ## Open work
 
 ### Menu Editor
-- Forms for editing the selected menu, entry, theme and background, instead of raw JSON, with a TMDB
-  backdrop picker and an asset picker. **big**
+- A TMDB backdrop picker and an asset picker in the forms. **big**
 - Drag and resize buttons, layers and the paging grid directly on the preview (positions are percentages,
   so this maps straight onto the JSON). **big**
 - Upload artwork and audio into the assets folder (type and size limits, path safety). **big**

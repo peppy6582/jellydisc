@@ -265,4 +265,21 @@ public sealed class FileManagementTests : IDisposable
         Assert.Equal(25, all.Count);
         Assert.Equal(all.OrderByDescending(b => b.Stamp, StringComparer.Ordinal).Select(b => b.Stamp), all.Select(b => b.Stamp));
     }
+
+    [Fact]
+    public void BackupsMadeInTheSameMillisecondDoNotOverwriteEachOther()
+    {
+        Put("a.menu.json");
+        var version = _editor.Read("a.menu.json").Version;
+        var doc = Doc(ExampleJson());
+        for (var i = 2; i < 12; i++)
+        {
+            doc["revision"] = i;
+            var saved = _editor.Save("a.menu.json", doc.ToJsonString(), version);
+            Assert.Equal(EditorResultKind.Ok, saved.Kind);
+            version = saved.Version;
+        }
+
+        Assert.Equal(10, _editor.ListBackups("a.menu.json").Count);
+    }
 }

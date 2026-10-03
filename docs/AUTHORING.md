@@ -249,7 +249,16 @@ the live preview update beside it.
   extras, chapters and trailers; otherwise it says what it lacks. Anything the menu "plays" is reported
   and never reaches your own session. It starts with sound off.
 - **Errors as you type.** Problems come from the same loader the server uses, with line and column for
-  syntax errors (click to jump there). While the text is invalid the preview keeps the last good version.
+  syntax errors (click to jump there). Every other problem names the part it is about (for example
+  `menus.main.entries[2].menu`): click it to select that text. While the text is invalid the preview keeps
+  the last good version.
+- **Parts and forms.** The list on the left shows the parts of the menu (extras, pages, buttons, decorative
+  layers); problems are marked on the part they are in. Choose one to select its text and edit it in the
+  form below: the text of a button, what it does, where it sits, a background, colours, music, the layout
+  grid and more, with choices taken from your real extras and pages and the schema's limits explained
+  next to the field. A form change edits only that part of the text, so the rest of the file keeps your
+  formatting, and Ctrl+Z takes it back in one step. Add, move and remove buttons, pages, extras and layers.
+  A picture stored inside the menu shows as a thumbnail, never as a block of text.
 - **Saving is careful.** It writes only existing `*.menu.json` files inside the menus folder; refuses text
   that wouldn't load, a changed `menuId` (bindings are tied to it) or a lower `revision`; bumps the
   revision for you when you changed something; keeps the previous version as a timestamped backup (the
@@ -269,8 +278,8 @@ the live preview update beside it.
   `POST /DiscMenus/Editor/Preview?file=` (the body is the menu text; returns exactly what the player
   endpoint would serve for it).
 
-Not in the editor yet: forms for editing properties, dragging buttons into place, and uploading art or
-audio. See the [roadmap](ROADMAP.md).
+Not in the editor yet: dragging buttons into place, and uploading art or audio. See the
+[roadmap](ROADMAP.md).
 
 ## Checking a menu from the command line
 

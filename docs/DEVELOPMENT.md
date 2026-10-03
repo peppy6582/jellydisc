@@ -65,7 +65,10 @@ Inside `Jellyfin.Plugin.DiscMenus/`:
   embedded in the DLL and served by `GET DiscMenus/web/editor/{name}.js`. `json-text.js` edits JSON *text* in place by path (set, remove, insert, move) so a form or
   picker changes one small span and leaves the rest of the file exactly as written; it refuses text that isn't valid JSON or has a repeated key. `text-adapter.js` applies
   an edit to the textarea as one step of the browser's own undo (`execCommand`), with a fallback history where that isn't possible. The page loads them with script tags inside its
-  own element (a dashboard page only reliably runs scripts inside its fragment).
+  own element (a dashboard page only reliably runs scripts inside its fragment). `outline.js` builds the list of a menu's parts and finds the text of any part (and attaches the
+  server's problems, which carry a JSON Pointer, to the part they are about). `inspector.js` draws the forms from `schema-hints.js` and changes the text through `json-text.js`.
+  **`schema-hints.js` is generated** from `schema/menu.schema.json` plus the hand-kept `tools/schema-hints/overrides.json` (labels, defaults, which background field applies to
+  which source): run `node tools/schema-hints/generate.js` after changing either; the JS tests (and CI) run it with `--check`, and every override must name a field the schema has.
 - **`Configuration/`:** the two dashboard pages (`configPage.html`, `editorPage.html`), plain HTML and JS
   embedded in the DLL.
 

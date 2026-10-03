@@ -72,6 +72,9 @@ public class EditorModuleResourceTests
     [Theory]
     [InlineData("json-text")]
     [InlineData("text-adapter")]
+    [InlineData("outline")]
+    [InlineData("schema-hints")]
+    [InlineData("inspector")]
     public void TheModuleIsEmbedded(string name)
     {
         var assembly = typeof(MenuFileLoader).Assembly;

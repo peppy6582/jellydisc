@@ -604,7 +604,15 @@ public sealed class MenuFileEditor
     {
         Directory.CreateDirectory(_backups);
         var stem = name.Replace('/', '~'); // '~' can't appear in a name, so stems never collide
-        File.WriteAllBytes(Path.Combine(_backups, $"{stem}.{DateTime.UtcNow:yyyyMMddHHmmssfff}.bak"), content);
+        // Two saves in the same millisecond must not share a name (the second would overwrite the first backup): step to the next free one.
+        var stamp = DateTime.UtcNow;
+        string target;
+        while (File.Exists(target = Path.Combine(_backups, $"{stem}.{stamp:yyyyMMddHHmmssfff}.bak")))
+        {
+            stamp = stamp.AddMilliseconds(1);
+        }
+
+        File.WriteAllBytes(target, content);
 
         // Keep the newest few per file; the timestamp in the name sorts chronologically.
         foreach (var old in Directory.EnumerateFiles(_backups, stem + ".*.bak")

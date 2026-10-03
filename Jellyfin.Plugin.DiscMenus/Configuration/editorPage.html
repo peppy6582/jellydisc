@@ -14,7 +14,36 @@
                     .discEdStatus.error { color: #e55; opacity: 1; }
                     .discEdStatus.ok { color: #5c5; opacity: 1; }
                     .discEdBody { display: flex; flex-wrap: wrap; gap: 1.25em; align-items: flex-start; }
-                    .discEdSide { flex: 0 1 17em; min-width: 12em; max-height: 44em; display: flex; flex-direction: column; }
+                    .discEdSide { flex: 0 1 24em; min-width: 14em; }
+                    .discEdSideHead2 { margin-top: 0.9em; }
+                    .discEdOutline { max-height: 14em; }
+                    .discEdInspector { border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; padding: 0.6em; max-height: 40em; overflow: auto; }
+                    .discEdInspector input[type=text], .discEdInspector input[type=number], .discEdInspector select {
+                        width: 100%; box-sizing: border-box; color: inherit; background: rgba(128, 128, 128, 0.15);
+                        border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 3px; padding: 0.35em 0.5em; font: inherit;
+                    }
+                    .discEdInspector select option { color: #000; }
+                    .discEdField { margin: 0.55em 0; }
+                    .discEdFieldLabel { display: block; font-size: 0.85em; opacity: 0.85; margin-bottom: 0.15em; }
+                    .discEdFieldHelp { font-size: 0.8em; opacity: 0.7; margin-top: 0.15em; }
+                    .discEdFieldMsg, .discEdInspMsg { font-size: 0.85em; color: #e55; margin-top: 0.15em; }
+                    .discEdInspNone { opacity: 0.8; }
+                    .discEdInspHead { margin-bottom: 0.4em; }
+                    .discEdGroup { margin: 0.7em 0; border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 4px; padding: 0.4em 0.6em; }
+                    .discEdGroup > legend, .discEdGroup > summary { font-size: 0.85em; padding: 0 0.3em; cursor: pointer; }
+                    .discEdAbsent { opacity: 0.85; }
+                    .discEdInline { display: flex; gap: 0.4em; align-items: center; }
+                    .discEdSwatch { width: 2.4em; height: 2em; padding: 0; border: none; background: none; }
+                    .discEdList { display: block; }
+                    .discEdListRow { display: flex; flex-wrap: wrap; gap: 0.35em; align-items: center; margin: 0.25em 0; }
+                    fieldset.discEdGroup { min-width: 0; }
+                    .discEdListRow > select, .discEdListRow > input[type=text] { flex: 1 1 8em; width: auto; min-width: 0; }
+                    .discEdGrow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                    .discEdLink { background: none; border: none; color: inherit; font: inherit; text-align: left; text-decoration: underline; cursor: pointer; padding: 0.2em 0; }
+                    .discEdSmall, .discEdIcon { color: inherit; background: rgba(128, 128, 128, 0.2); border: 1px solid rgba(128, 128, 128, 0.5); border-radius: 3px; font: inherit; font-size: 0.85em; padding: 0.25em 0.6em; cursor: pointer; }
+                    .discEdSmall:disabled, .discEdIcon:disabled { opacity: 0.4; cursor: default; }
+                    .discEdThumb { max-width: 6em; max-height: 4em; vertical-align: middle; margin-right: 0.5em; border-radius: 3px; }
+                    .discEdEmbedded { display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap; }
                     .discEdSideHead { font-weight: 600; margin-bottom: 0.4em; }
                     .discEdOutline { overflow: auto; border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; padding: 0.25em 0; }
                     .discEdOutline .none { padding: 0.5em; opacity: 0.8; }
@@ -104,6 +133,8 @@
                     <div class="discEdSide">
                         <div class="discEdSideHead">Parts of this menu</div>
                         <div id="discEdOutline" class="discEdOutline" role="group" aria-label="Parts of this menu"></div>
+                        <div class="discEdSideHead discEdSideHead2">Edit the selected part</div>
+                        <div id="discEdInspector" class="discEdInspector"></div>
                     </div>
                     <div class="discEdPane">
                         <textarea id="discEdText" spellcheck="false" wrap="off" aria-label="Menu JSON" disabled></textarea>
@@ -158,7 +189,7 @@
                 newPanel: $('discEdNewPanel'), newQuery: $('discEdNewQuery'), newClose: $('discEdNewClose'), newMsg: $('discEdNewMsg'), newList: $('discEdNewList'),
                 backupPanel: $('discEdBackupPanel'), backupClose: $('discEdBackupClose'), backupTitle: $('discEdBackupTitle'),
                 backupMsg: $('discEdBackupMsg'), backupList: $('discEdBackupList'),
-                outline: $('discEdOutline'),
+                outline: $('discEdOutline'), inspector: $('discEdInspector'),
                 file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
                 text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
                 conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
@@ -175,11 +206,11 @@
             // ---- script modules ---------------------------------------------------------------
             // json-text.js (in-place JSON edits by path) and text-adapter.js (one native undo step per edit) are served by the plugin.
             // They are loaded here, inside the page element, because only the page's own fragment is reliably run by the dashboard.
-            var MODULES = ['json-text', 'text-adapter', 'outline'];
+            var MODULES = ['json-text', 'text-adapter', 'outline', 'schema-hints', 'inspector'];
             var adapter = null;
 
             function modulesReady() {
-                return !!(window.DiscMenusJsonText && window.DiscMenusTextAdapter && window.DiscMenusOutline);
+                return !!(window.DiscMenusJsonText && window.DiscMenusTextAdapter && window.DiscMenusOutline && window.DiscMenusSchemaHints && window.DiscMenusInspector);
             }
 
             function loadModules() {
@@ -487,6 +518,7 @@
 
                 state.selected = path;
                 renderOutline();
+                renderForm();
                 el.text.setSelectionRange(hit.start, hit.end);
                 var lineHeight = parseFloat(window.getComputedStyle(el.text).lineHeight) || 18;
                 el.text.scrollTop = Math.max(0, (hit.line - 3) * lineHeight);
@@ -497,6 +529,63 @@
                 if (path[0] === 'menus' && path.length >= 2 && Array.prototype.some.call(el.menu.options, function (o) { return o.value === path[1]; }) && el.menu.value !== path[1]) {
                     el.menu.value = path[1];
                     el.menu.dispatchEvent(new Event('change'));
+                }
+            }
+
+            // ---- forms (inspector.js) --------------------------------------------------------
+            var inspector = null;
+
+            function ensureInspector() {
+                if (inspector || !modulesReady() || !el.inspector) {
+                    return inspector;
+                }
+
+                inspector = window.DiscMenusInspector.create({
+                    container: el.inspector,
+                    hints: window.DiscMenusSchemaHints,
+                    JsonText: window.DiscMenusJsonText,
+                    getText: function () { return el.text.value; },
+                    commit: function (fn) {
+                        var before = el.text.value;
+                        var after = fn(before);
+                        if (after !== before) {
+                            applyText(after);
+                        }
+
+                        return true;
+                    },
+                    select: function (path) { selectPath(path, false); },
+                    actions: {
+                        fanart: function (path) {
+                            openFanart();
+                            var target = path[0] === 'menus' ? path[1] : '';
+                            if (Array.prototype.some.call(el.fanartTarget.options, function (o) { return o.value === target; })) {
+                                el.fanartTarget.value = target;
+                            }
+                        }
+                    }
+                });
+                return inspector;
+            }
+
+            function renderForm() {
+                var insp = ensureInspector();
+                if (!insp) {
+                    return;
+                }
+
+                if (!state.file) {
+                    el.inspector.textContent = '';
+                    return;
+                }
+
+                insp.show(state.selected);
+            }
+
+            function refreshForm() {
+                var insp = ensureInspector();
+                if (insp && state.file) {
+                    insp.refresh();
                 }
             }
 
@@ -691,6 +780,7 @@
                     fillFileList(name);
                     state.selected = [];
                     renderOutline();
+                    renderForm();
                     setStatus('Saved', 'ok');
                     schedulePreview(0);
                 });
@@ -1089,6 +1179,7 @@
 
                 refreshDirtyStatus();
                 renderOutline();
+                refreshForm();
                 schedulePreview();
             });
 
