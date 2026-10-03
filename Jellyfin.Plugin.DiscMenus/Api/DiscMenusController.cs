@@ -280,6 +280,32 @@ public sealed class DiscMenusController : ControllerBase
     }
 
     /// <summary>The web menu renderer script injected into jellyfin-web by <see cref="TransformIndexHtml"/>.</summary>
+    /// <summary>
+    /// The Menu Editor's script modules (Web/editor/*.js). A dashboard page can only reliably run the script inside its own fragment, so the
+    /// page loads these through script tags that point here. The name is limited to lower-case letters, digits and hyphens, and only
+    /// embedded resources can be served: nothing else on the server is reachable through this route.
+    /// </summary>
+    [HttpGet("web/editor/{name}.js")]
+    [AllowAnonymous]
+    public ActionResult GetEditorScript(string name)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[a-z][a-z0-9-]{0,30}$"))
+        {
+            return NotFound();
+        }
+
+        var assembly = GetType().Assembly;
+        using var stream = assembly.GetManifestResourceStream($"{assembly.GetName().Name}.Web.editor.{name}.js");
+        if (stream is null)
+        {
+            return NotFound();
+        }
+
+        using var reader = new StreamReader(stream);
+        Response.Headers.CacheControl = "no-cache";
+        return Content(reader.ReadToEnd(), "application/javascript");
+    }
+
     [HttpGet("web/discmenus.js")]
     [AllowAnonymous]
     public ContentResult GetRendererScript()

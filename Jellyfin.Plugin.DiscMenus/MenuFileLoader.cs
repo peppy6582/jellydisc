@@ -29,6 +29,10 @@ public static class MenuFileLoader
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
+
+        // A repeated key is rejected, not resolved by "last one wins": the Menu Editor's forms and the catalogue's checks all need
+        // there to be exactly one answer to "what is this property?".
+        AllowDuplicateProperties = false,
     };
 
     public static MenuDocument LoadMenu(string path) => ParseMenu(File.ReadAllText(path), path);

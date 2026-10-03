@@ -53,8 +53,21 @@ services:
       - .:/workspace
       - jdm_node:/workspace/tests/js/node_modules
 
+  # Real-browser tests (Chromium, Firefox, WebKit): the browsers come with the image, so nothing else is installed.
+  #   docker compose run --rm browser
+  browser:
+    image: mcr.microsoft.com/playwright:v1.55.0-noble
+    container_name: jellyfin-disc-menus-browser
+    profiles: ["tools"]
+    working_dir: /workspace/tests/browser
+    command: sh -c "npm install --no-audit --no-fund --loglevel=error && npm test"
+    volumes:
+      - .:/workspace
+      - jdm_browser_node:/workspace/tests/browser/node_modules
+
 volumes:
   jdm_nuget:
   jdm_artifacts:
   jdm_pip:
   jdm_node:
+  jdm_browser_node:

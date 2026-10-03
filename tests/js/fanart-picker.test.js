@@ -43,6 +43,9 @@ function boot(server){
       return Promise.resolve(server(e,w)).then(r=>{ if(r.status>=400) return Promise.reject({status:r.status,json:()=>Promise.resolve(r.body)}); return r.body; }); }};
   w.__preview={calls:[],show(d,p){this.calls.push(['show']);},update(d,p){this.calls.push(['update']);},goTo(){},setMuted(){}};
   w.document.getElementById('discEdFrame').contentWindow.DiscMenusPreview=w.__preview;
+  // the page loads these modules through script tags; the test supplies them directly
+  w.__discMenusEditorModulesPreloaded = true;
+  ['json-text', 'text-adapter'].forEach(n => w.eval(fs.readFileSync(path.join(ROOT, 'Jellyfin.Plugin.DiscMenus/Web/editor/' + n + '.js'), 'utf8')));
   w.eval(script); return w;
 }
 const ok=(body)=>({status:200,body}); const err=(status,body)=>({status,body});

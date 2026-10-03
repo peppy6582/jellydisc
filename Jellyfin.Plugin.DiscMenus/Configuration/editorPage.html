@@ -118,11 +118,52 @@
             };
 
             var state = {
-                fanart: null, fanartShown: 0, fanartPicked: null, fanartUndo: null,
+                fanart: null, fanartShown: 0, fanartPicked: null,
                 file: null, version: null, loadedText: '', loadedRevision: null, files: [],
                 lastGood: null, shownOnce: false, seq: 0, timer: null, muted: true, loadSeq: 0,
                 errorSource: null // who produced the errors on screen: 'preview' or 'save'
             };
+
+            // ---- script modules ---------------------------------------------------------------
+            // json-text.js (in-place JSON edits by path) and text-adapter.js (one native undo step per edit) are served by the plugin.
+            // They are loaded here, inside the page element, because only the page's own fragment is reliably run by the dashboard.
+            var MODULES = ['json-text', 'text-adapter'];
+            var adapter = null;
+
+            function modulesReady() {
+                return !!(window.DiscMenusJsonText && window.DiscMenusTextAdapter);
+            }
+
+            function loadModules() {
+                if (window.__discMenusEditorModulesPreloaded && modulesReady()) {
+                    return Promise.resolve();
+                }
+
+                var stamp = Date.now(); // always the current build: the page and its modules must match
+                return Promise.all(MODULES.map(function (name) {
+                    return new Promise(function (resolve, reject) {
+                        var tag = document.createElement('script');
+                        tag.src = ApiClient.getUrl('DiscMenus/web/editor/' + name + '.js') + '?t=' + stamp;
+                        tag.onload = resolve;
+                        tag.onerror = function () { reject(new Error('The editor could not load its "' + name + '" module.')); };
+                        page.appendChild(tag);
+                    });
+                })).then(function () {
+                    if (!modulesReady()) {
+                        throw new Error('The editor modules loaded but are not usable.');
+                    }
+                });
+            }
+
+            // Every programmatic change to the text goes through here: one native undo step, and the same input event typing makes.
+            function applyText(newText, caret) {
+                if (adapter) {
+                    adapter.apply(newText, caret);
+                } else {
+                    el.text.value = newText;
+                    el.text.dispatchEvent(new Event('input'));
+                }
+            }
 
             // ---- small helpers -------------------------------------------------------
             function setStatus(text, kind) {
@@ -296,6 +337,10 @@
                     state.loadedText = r.data.Json;
                     state.loadedRevision = revisionOf(r.data.Json);
                     el.text.value = r.data.Json;
+                    if (adapter) {
+                        adapter.reset();
+                    }
+
                     el.text.disabled = false;
                     state.lastGood = null;
                     state.shownOnce = false;
@@ -422,7 +467,13 @@
                 var text = el.text.value;
                 var current = revisionOf(text);
                 if (text !== state.loadedText && current !== null && state.loadedRevision !== null && current <= state.loadedRevision) {
-                    el.text.value = text.replace(/("revision"\s*:\s*)\d+/, '$1' + (state.loadedRevision + 1));
+                    var next = String(state.loadedRevision + 1);
+                    var bumped = null;
+                    if (modulesReady()) {
+                        try { bumped = window.DiscMenusJsonText.set(text, ['revision'], next); } catch (e) { bumped = null; }
+                    }
+
+                    applyText(bumped !== null ? bumped : text.replace(/("revision"\s*:\s*)\d+/, '$1' + next));
                 }
             }
 
@@ -472,123 +523,40 @@
             // ---- fanart.tv picker ------------------------------------------------------------
             // Sets a menu's (or every page's) background to a fanart.tv picture by patching ONLY that property in the text, so the
             // author's formatting, comments-by-convention and key order are left exactly as they were.
-            function scanJson(text) {
-                var i = 0;
-                function fail(why) { throw new Error(why || 'not JSON'); }
-                function ws() { while (i < text.length && ' \t\r\n'.indexOf(text.charAt(i)) >= 0) { i++; } }
-                function str() {
-                    if (text.charAt(i) !== '"') { fail(); }
-                    i++;
-                    while (i < text.length) {
-                        var c = text.charAt(i);
-                        if (c === '\\') { i += 2; } else if (c === '"') { i++; return; } else { i++; }
-                    }
-
-                    fail();
-                }
-
-                function value(depth) {
-                    if (depth > 64) { fail('too deep'); }
-                    ws();
-                    var start = i, c = text.charAt(i);
-                    if (c === '{') {
-                        i++;
-                        var props = [];
-                        ws();
-                        if (text.charAt(i) === '}') { i++; return { type: 'object', start: start, end: i, props: props }; }
-                        for (;;) {
-                            ws();
-                            var ks = i;
-                            str();
-                            var key = JSON.parse(text.slice(ks, i));
-                            ws();
-                            if (text.charAt(i) !== ':') { fail(); }
-                            i++;
-                            var v = value(depth + 1);
-                            props.push({ key: key, keyStart: ks, value: v });
-                            ws();
-                            if (text.charAt(i) === ',') { i++; continue; }
-                            if (text.charAt(i) === '}') { i++; break; }
-                            fail();
-                        }
-
-                        return { type: 'object', start: start, end: i, props: props };
-                    }
-
-                    if (c === '[') {
-                        i++;
-                        ws();
-                        if (text.charAt(i) === ']') { i++; return { type: 'array', start: start, end: i }; }
-                        for (;;) {
-                            value(depth + 1);
-                            ws();
-                            if (text.charAt(i) === ',') { i++; continue; }
-                            if (text.charAt(i) === ']') { i++; break; }
-                            fail();
-                        }
-
-                        return { type: 'array', start: start, end: i };
-                    }
-
-                    if (c === '"') { str(); return { type: 'string', start: start, end: i }; }
-                    var m = /^(-?\d+(\.\d+)?([eE][+-]?\d+)?|true|false|null)/.exec(text.slice(i));
-                    if (!m) { fail(); }
-                    i += m[0].length;
-                    return { type: 'prim', start: start, end: i };
-                }
-
-                var root = value(0);
-                ws();
-                if (i !== text.length) { fail('trailing text'); }
-                return root;
-            }
-
-            function lastProp(obj, key) {
-                var found = null;
-                obj.props.forEach(function (p) { if (p.key === key) { found = p; } });
-                return found;
-            }
-
-            // menuKey '' = the whole menu's default background; otherwise that page's own.
+            // menuKey '' = the whole menu's default background; otherwise that page's own. Uses the shared in-place editor.
             function setBackground(text, menuKey, bg) {
-                var root;
+                var J = window.DiscMenusJsonText;
+                var explain = function (e) {
+                    if (e && e.code === 'duplicate') { return e.message; }
+                    return 'The JSON has an error, so the picker cannot edit it. Fix the error shown above first.';
+                };
+
                 try {
-                    root = scanJson(text);
+                    J.parse(text);
                 } catch (e) {
-                    throw new Error('The JSON has an error, so the picker cannot edit it. Fix the error shown above first.');
+                    throw new Error(explain(e));
                 }
 
-                if (root.type !== 'object') { throw new Error('This file is not a menu (it should be a JSON object).'); }
-                var target = root;
+                var rootValue = J.getValue(text, []);
+                if (!rootValue || typeof rootValue !== 'object' || Array.isArray(rootValue)) {
+                    throw new Error('This file is not a menu (it should be a JSON object).');
+                }
+
                 if (menuKey) {
-                    var menus = lastProp(root, 'menus');
-                    if (!menus || menus.value.type !== 'object') { throw new Error('This menu has no "menus" section.'); }
-                    var page = lastProp(menus.value, menuKey);
-                    if (!page || page.value.type !== 'object') { throw new Error('There is no menu "' + menuKey + '" in this file.'); }
-                    target = page.value;
+                    var menus = J.getValue(text, ['menus']);
+                    if (!menus || typeof menus !== 'object' || Array.isArray(menus)) { throw new Error('This menu has no "menus" section.'); }
+                    var page = menus[menuKey];
+                    if (!page || typeof page !== 'object' || Array.isArray(page)) { throw new Error('There is no menu "' + menuKey + '" in this file.'); }
                 }
 
                 var fresh = '{ "source": "fanart", "fanartId": ' + JSON.stringify(String(bg.fanartId)) + ', "dim": ' + Number(bg.dim) + ' }';
-                var existing = lastProp(target, 'background');
-                var out;
-                if (existing) {
-                    out = text.slice(0, existing.value.start) + fresh + text.slice(existing.value.end);
-                } else if (target.props.length === 0) {
-                    out = text.slice(0, target.start) + '{ "background": ' + fresh + ' }' + text.slice(target.end);
-                } else {
-                    // after "match" (the whole menu) or "title" (a page); if absent, after the last property
-                    var anchor = lastProp(target, menuKey ? 'title' : 'match') || target.props[target.props.length - 1];
-                    var lineStart = text.lastIndexOf('\n', anchor.keyStart - 1) + 1;
-                    var lead = text.slice(lineStart, anchor.keyStart);
-                    var gap = lineStart > 0 && /^[ \t]*$/.test(lead) ? (text.charAt(lineStart - 2) === '\r' ? '\r\n' : '\n') + lead : ' ';
-                    out = text.slice(0, anchor.value.end) + ',' + gap + '"background": ' + fresh + text.slice(anchor.value.end);
+                try {
+                    return J.set(text, menuKey ? ['menus', menuKey, 'background'] : ['background'], fresh, { after: menuKey ? ['title'] : ['match'] });
+                } catch (e) {
+                    throw new Error(explain(e));
                 }
-
-                JSON.parse(out); // never hand back something that would not parse
-                return out;
             }
 
-            // for the tests; harmless to anyone else
             window.__discMenusEditorTools = { setBackground: setBackground };
 
             var FANART_PAGE = 12;
@@ -745,24 +713,19 @@
                     return;
                 }
 
-                state.fanartUndo = before;
                 state.fanartPicked = img.Id;
-                el.text.value = after;
-                el.text.dispatchEvent(new Event('input'));
+                applyText(after);
                 var where = el.fanartTarget.value ? 'the "' + el.fanartTarget.value + '" page' : 'every page';
                 fanartMessage('Used picture ' + img.Id + ' for ' + where + '. Save to keep it.', true);
                 drawFanartGrid();
             }
 
             function undoFanart() {
-                if (state.fanartUndo === null) {
+                if (!adapter || !adapter.undo()) {
                     return;
                 }
 
-                el.text.value = state.fanartUndo;
-                state.fanartUndo = null;
                 state.fanartPicked = null;
-                el.text.dispatchEvent(new Event('input'));
                 fanartMessage('Undone.');
                 drawFanartGrid();
             }
@@ -786,9 +749,7 @@
                 if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
                     e.preventDefault();
                     var s = el.text.selectionStart;
-                    el.text.value = el.text.value.slice(0, s) + '  ' + el.text.value.slice(el.text.selectionEnd);
-                    el.text.selectionStart = el.text.selectionEnd = s + 2;
-                    el.text.dispatchEvent(new Event('input'));
+                    applyText(el.text.value.slice(0, s) + '  ' + el.text.value.slice(el.text.selectionEnd), s + 2);
                 } else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
                     e.preventDefault();
                     save();
@@ -857,7 +818,12 @@
                 }
 
                 fitStage();
-                loadFiles(true);
+                loadModules().then(function () {
+                    adapter = window.DiscMenusTextAdapter.create(el.text);
+                    loadFiles(true);
+                }, function (err) {
+                    setStatus(err.message, 'error');
+                });
             });
         })();
         </script>

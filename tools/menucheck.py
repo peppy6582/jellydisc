@@ -16,7 +16,20 @@ import json, sys, copy, os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from jsonschema import Draft202012Validator, FormatChecker
 
-def load(p): return json.load(open(p))
+def _no_duplicate_keys(pairs):
+    """A repeated key is an error, not "last one wins": the editor and the catalogue both need exactly one answer."""
+    seen = set()
+    for key, _ in pairs:
+        if key in seen:
+            raise ValueError(f"the key {key!r} appears more than once in the same object")
+        seen.add(key)
+    return dict(pairs)
+
+
+def load(p):
+    with open(p, encoding="utf-8") as f:
+        return json.load(f, object_pairs_hook=_no_duplicate_keys)
+
 ms, bs = load(os.path.join(ROOT,"schema","menu.schema.json")), load(os.path.join(ROOT,"schema","binding.schema.json"))
 Draft202012Validator.check_schema(ms); Draft202012Validator.check_schema(bs)
 mv = Draft202012Validator(ms, format_checker=FormatChecker())
@@ -95,7 +108,7 @@ def check_menu_file(path):
     except OSError as ex:
         return [f"cannot read file: {ex.strerror or ex}"]
     try:
-        doc = json.loads(raw.decode("utf-8-sig"))
+        doc = json.loads(raw.decode("utf-8-sig"), object_pairs_hook=_no_duplicate_keys)
     except UnicodeDecodeError:
         return ["file is not valid UTF-8"]
     except ValueError as ex:

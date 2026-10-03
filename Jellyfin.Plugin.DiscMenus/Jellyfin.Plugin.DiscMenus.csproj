@@ -23,6 +23,7 @@
     <EmbeddedResource Include="Configuration/editorPage.html" />
     <EmbeddedResource Include="Configuration/cataloguePage.html" />
     <EmbeddedResource Include="Web/discmenus.js" />
+    <EmbeddedResource Include="Web/editor/*.js" />
     <EmbeddedResource Include="Web/preview.html" />
   </ItemGroup>
 

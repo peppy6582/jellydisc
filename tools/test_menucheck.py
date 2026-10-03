@@ -126,5 +126,51 @@ class Command(unittest.TestCase):
         self.assertIn("cannot read file", out)
 
 
+
+
+class DuplicateKeys(unittest.TestCase):
+    """A repeated key is an error in every layer (the editor and the catalogue need exactly one answer)."""
+
+    def write(self, text):
+        import tempfile
+        d = tempfile.mkdtemp(prefix="dup-")
+        self.addCleanup(__import__("shutil").rmtree, d, ignore_errors=True)
+        p = os.path.join(d, "m.menu.json")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(text)
+        return p
+
+    def test_a_clean_menu_passes_and_a_repeated_key_fails_everywhere(self):
+        import menucheck
+        with open(os.path.join(menucheck.ROOT, "examples", "example.menu.json"), encoding="utf-8") as f:
+            good = f.read()
+        self.assertEqual([], menucheck.check_menu_file(self.write(good)))
+        for original, doubled in (
+            ('"revision": 2,', '"revision": 2, "revision": 3,'),
+            ('"schemaVersion": 1,', '"schemaVersion": 1, "schemaVersion": 1,'),
+            ('"match": {', '"match": { "itemType": "Movie",'),
+        ):
+            if original not in good:
+                continue
+            problems = menucheck.check_menu_file(self.write(good.replace(original, doubled, 1)))
+            self.assertTrue(problems, original)
+            self.assertTrue(any("more than once" in p for p in problems), problems)
+
+    def test_nested_and_map_duplicates(self):
+        import menucheck
+        for text in (
+            '{"a": {"k": 1, "k": 2}}',
+            '{"menus": {"main": {}, "main": {}}}',
+            '{"list": [{"x": 1, "x": 2}]}',
+        ):
+            problems = menucheck.check_menu_file(self.write(text))
+            self.assertTrue(any("more than once" in p for p in problems), text)
+
+    def test_load_rejects_them_too(self):
+        import menucheck
+        with self.assertRaises(ValueError):
+            menucheck.load(self.write('{"a": 1, "a": 2}'))
+
+
 if __name__ == "__main__":
     unittest.main()

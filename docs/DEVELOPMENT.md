@@ -61,6 +61,11 @@ Inside `Jellyfin.Plugin.DiscMenus/`:
   exactly what the renderer consumes. The player endpoint and the editor preview share it.
 - **`Web/discmenus.js`:** the renderer. A single self-contained script with no build step. It also has a
   *preview mode* used by the editor. **`Web/preview.html`** is the page the editor embeds.
+- **`Web/editor/`:** the Menu Editor's script modules, plain UMD files with no build step (they load in the page and `require()` in Node tests),
+  embedded in the DLL and served by `GET DiscMenus/web/editor/{name}.js`. `json-text.js` edits JSON *text* in place by path (set, remove, insert, move) so a form or
+  picker changes one small span and leaves the rest of the file exactly as written; it refuses text that isn't valid JSON or has a repeated key. `text-adapter.js` applies
+  an edit to the textarea as one step of the browser's own undo (`execCommand`), with a fallback history where that isn't possible. The page loads them with script tags inside its
+  own element (a dashboard page only reliably runs scripts inside its fragment).
 - **`Configuration/`:** the two dashboard pages (`configPage.html`, `editorPage.html`), plain HTML and JS
   embedded in the DLL.
 

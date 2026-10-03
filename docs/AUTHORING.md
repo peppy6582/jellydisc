@@ -170,6 +170,7 @@ viewer's "reduce motion" setting is honoured.
 Menus are meant to be downloaded and shared, so they are treated as **untrusted input**: the plugin's
 loader and the browser both re-check everything, and a menu can contain data but never code.
 
+- **Each key once.** A property may appear only once in an object, and a menu or extra key only once in its map. A repeated key (which JSON itself would resolve by keeping the last one) is an error, so a form can never edit "the wrong one".
 - **No binaries.** An image or audio reference is an `https://` URL, an `asset:<folder>/<file>`
   reference to a file in the server's menu `assets` folder, or (images only) a small
   `data:image/(png|jpeg|webp);base64,` URI. SVG is refused. URLs may not contain whitespace, quotes,

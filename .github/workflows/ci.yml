@@ -99,3 +99,20 @@ jobs:
         with:
           name: disc-menus-package
           path: dist/*.zip
+
+  real-browsers:
+    name: Real-browser editing test (Chromium, Firefox, WebKit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - working-directory: tests/browser
+        run: npm ci --no-audit --no-fund
+      - working-directory: tests/browser
+        run: npx playwright install --with-deps chromium firefox webkit
+      - working-directory: tests/browser
+        run: npm test
