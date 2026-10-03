@@ -14,10 +14,15 @@
                     .discEdStatus.error { color: #e55; opacity: 1; }
                     .discEdStatus.ok { color: #5c5; opacity: 1; }
                     .discEdBody { display: flex; flex-wrap: wrap; gap: 1.25em; align-items: flex-start; }
-                    .discEdSide { flex: 0 1 24em; min-width: 14em; }
-                    .discEdSideHead2 { margin-top: 0.9em; }
-                    .discEdOutline { max-height: 14em; }
-                    .discEdInspector { border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; padding: 0.6em; max-height: 40em; overflow: auto; }
+                    .discEdSide { flex: 0 1 17em; min-width: 12em; }
+                    .discEdFormPane { flex: 1 1 22em; min-width: 16em; max-width: 34em; }
+                    .discEdOutline { max-height: 44em; }
+                    .discEdHint { font-size: 0.9em; opacity: 0.8; margin: 0.2em 0 0.6em; }
+                    .discEdBack { display: block; font-size: 0.85em; margin-bottom: 0.2em; }
+                    .discEdTitle { font-size: 1.15em; }
+                    .discEdMore { margin: 0.8em 0; }
+                    .discEdMore > summary { cursor: pointer; font-size: 0.9em; opacity: 0.85; padding: 0.3em 0; }
+                    .discEdInspector { border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; padding: 0.6em; max-height: 44em; overflow: auto; }
                     .discEdInspector input[type=text], .discEdInspector input[type=number], .discEdInspector select {
                         width: 100%; box-sizing: border-box; color: inherit; background: rgba(128, 128, 128, 0.15);
                         border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 3px; padding: 0.35em 0.5em; font: inherit;
@@ -107,6 +112,9 @@
                     <button id="discEdNew" is="emby-button" type="button" class="raised"><span>New…</span></button>
                     <button id="discEdDuplicate" is="emby-button" type="button" class="raised"><span>Duplicate</span></button>
                     <button id="discEdBackups" is="emby-button" type="button" class="raised"><span>Backups…</span></button>
+                    <button id="discEdUndo" is="emby-button" type="button" class="raised" title="Undo the last change (Ctrl+Z)"><span>Undo</span></button>
+                    <button id="discEdRedo" is="emby-button" type="button" class="raised" title="Redo (Ctrl+Shift+Z)"><span>Redo</span></button>
+                    <button id="discEdToggleText" is="emby-button" type="button" class="raised" aria-pressed="false"><span>Show text</span></button>
                     <button id="discEdDelete" is="emby-button" type="button" class="raised"><span>Delete</span></button>
                     <span id="discEdStatus" class="discEdStatus" role="status"></span>
                 </div>
@@ -129,21 +137,23 @@
                     <div id="discEdBackupList"></div>
                 </div>
 
+                <div id="discEdErrors" class="discEdErrors" role="alert"></div>
+                <div id="discEdConflict" class="discEdConflict" hidden>
+                    <div id="discEdConflictText"></div>
+                    <button id="discEdLoadTheirs" is="emby-button" type="button" class="raised"><span>Load the server's version</span></button>
+                    <button id="discEdOverwrite" is="emby-button" type="button" class="raised"><span>Overwrite with mine</span></button>
+                </div>
+
                 <div class="discEdBody">
                     <div class="discEdSide">
-                        <div class="discEdSideHead">Parts of this menu</div>
-                        <div id="discEdOutline" class="discEdOutline" role="group" aria-label="Parts of this menu"></div>
-                        <div class="discEdSideHead discEdSideHead2">Edit the selected part</div>
+                        <div class="discEdSideHead">Pages and buttons</div>
+                        <div id="discEdOutline" class="discEdOutline" role="group" aria-label="Pages and buttons"></div>
+                    </div>
+                    <div class="discEdFormPane">
                         <div id="discEdInspector" class="discEdInspector"></div>
                     </div>
-                    <div class="discEdPane">
+                    <div class="discEdPane" id="discEdTextPane" hidden>
                         <textarea id="discEdText" spellcheck="false" wrap="off" aria-label="Menu JSON" disabled></textarea>
-                        <div id="discEdErrors" class="discEdErrors" role="alert"></div>
-                        <div id="discEdConflict" class="discEdConflict" hidden>
-                            <div id="discEdConflictText"></div>
-                            <button id="discEdLoadTheirs" is="emby-button" type="button" class="raised"><span>Load the server's version</span></button>
-                            <button id="discEdOverwrite" is="emby-button" type="button" class="raised"><span>Overwrite with mine</span></button>
-                        </div>
                     </div>
                     <div class="discEdPane">
                         <div class="discEdPreviewBar">
@@ -189,7 +199,7 @@
                 newPanel: $('discEdNewPanel'), newQuery: $('discEdNewQuery'), newClose: $('discEdNewClose'), newMsg: $('discEdNewMsg'), newList: $('discEdNewList'),
                 backupPanel: $('discEdBackupPanel'), backupClose: $('discEdBackupClose'), backupTitle: $('discEdBackupTitle'),
                 backupMsg: $('discEdBackupMsg'), backupList: $('discEdBackupList'),
-                outline: $('discEdOutline'), inspector: $('discEdInspector'),
+                outline: $('discEdOutline'), toggleText: $('discEdToggleText'), undo: $('discEdUndo'), redo: $('discEdRedo'), textPane: $('discEdTextPane'), inspector: $('discEdInspector'),
                 file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
                 text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
                 conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
@@ -523,6 +533,7 @@
                 var lineHeight = parseFloat(window.getComputedStyle(el.text).lineHeight) || 18;
                 el.text.scrollTop = Math.max(0, (hit.line - 3) * lineHeight);
                 if (focus) {
+                    showText(true, false);
                     el.text.focus();
                 }
 
@@ -530,6 +541,33 @@
                     el.menu.value = path[1];
                     el.menu.dispatchEvent(new Event('change'));
                 }
+            }
+
+            // ---- the raw text is optional ------------------------------------------------------
+            // Forms are the main way in; the text is there for anyone who wants it. The choice is remembered in this browser.
+            function showText(on, remember) {
+                el.textPane.hidden = !on;
+                el.toggleText.setAttribute('aria-pressed', on ? 'true' : 'false');
+                el.toggleText.querySelector('span').textContent = on ? 'Hide text' : 'Show text';
+                if (remember) {
+                    try { window.localStorage.setItem('discMenusEditorShowText', on ? '1' : '0'); } catch (ignore) { /* storage may be unavailable */ }
+                }
+            }
+
+            function textWanted() {
+                try { return window.localStorage.getItem('discMenusEditorShowText') === '1'; } catch (ignore) { return false; }
+            }
+
+            // The page a person most likely wants first: the menu's first page.
+            function firstSelection(text) {
+                try {
+                    var d = JSON.parse(text);
+                    if (d && d.menus && typeof d.root === 'string' && Object.prototype.hasOwnProperty.call(d.menus, d.root)) {
+                        return ['menus', d.root];
+                    }
+                } catch (ignore) { /* not valid JSON: the form says so */ }
+
+                return [];
             }
 
             // ---- forms (inspector.js) --------------------------------------------------------
@@ -627,6 +665,7 @@
             }
 
             function jumpToLine(line) {
+                showText(true, false);
                 var lines = el.text.value.split('\n');
                 var start = 0;
                 for (var i = 0; i < line - 1 && i < lines.length; i++) {
@@ -646,6 +685,10 @@
                 clearErrors();
                 state.errorSource = source;
                 state.errors = errors || [];
+                if (state.errors.some(function (e) { return e && e.Line; })) {
+                    showText(true, false);
+                }
+
                 renderOutline();
                 if (!errors || !errors.length) {
                     return;
@@ -778,7 +821,7 @@
                     hideConflict();
                     clearErrors();
                     fillFileList(name);
-                    state.selected = [];
+                    state.selected = firstSelection(r.data.Json);
                     renderOutline();
                     renderForm();
                     setStatus('Saved', 'ok');
@@ -1199,6 +1242,31 @@
             });
 
             el.save.addEventListener('click', function () { save(); });
+            // With the text hidden there is no text box to press Ctrl+Z in, so undo is a button and a key on the page. Typing inside a field keeps the
+            // browser's own undo for that field.
+            el.undo.addEventListener('click', function () { if (adapter) { adapter.undo(); } });
+            el.redo.addEventListener('click', function () { if (adapter) { adapter.redo(); } });
+            page.addEventListener('keydown', function (e) {
+                var key = (e.key || '').toLowerCase();
+                if (!adapter || !(e.ctrlKey || e.metaKey) || e.altKey || (key !== 'z' && key !== 'y')) {
+                    return;
+                }
+
+                var t = e.target;
+                var typing = t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|number|search|)$/.test(t.type || '')));
+                if (typing) {
+                    return;
+                }
+
+                e.preventDefault();
+                if (key === 'y' || e.shiftKey) {
+                    adapter.redo();
+                } else {
+                    adapter.undo();
+                }
+            });
+            el.toggleText.addEventListener('click', function () { showText(el.textPane.hidden, true); });
+            showText(textWanted(), false);
             el.newBtn.addEventListener('click', openNewPanel);
             el.newClose.addEventListener('click', function () { el.newPanel.hidden = true; });
             el.newQuery.addEventListener('input', function () {

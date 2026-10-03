@@ -36,8 +36,8 @@ for (const [name, type] of [["chromium", chromium], ["firefox", firefox], ["webk
   for (const m of MODULES) await page.addScriptTag({ content: m });
   await page.addScriptTag({ content: script });
   await page.evaluate(() => document.querySelector("#DiscMenusEditorPage").dispatchEvent(new CustomEvent("pageshow")));
-  await page.waitForSelector("#discEdInspector select[data-key='root']");
-  check("the form for the whole menu appears", true);
+  await page.waitForSelector("#discEdInspector [data-key='menus/main/title']");
+  check("the first page's form appears, and the raw text starts hidden", !(await page.evaluate(() => { const r = document.querySelector("#discEdText").getBoundingClientRect(); return r.right > 0 && r.left < innerWidth; })));
   await page.screenshot({ path: new URL("./shots/" + name + "-1-whole.png", import.meta.url).pathname });
 
   const outline = page.locator("#discEdOutline button", { hasText: "Play Movie - Play feature" }).first();
@@ -53,15 +53,33 @@ for (const [name, type] of [["chromium", chromium], ["firefox", firefox], ["webk
   check("the form was redrawn from the text", (await page.inputValue("#discEdInspector " + labelKey)) === "Play it now");
   await page.screenshot({ path: new URL("./shots/" + name + "-2-entry.png", import.meta.url).pathname });
 
+  // the text is hidden, so undo is a button
+  await page.click("#discEdUndo");
+  check("the Undo button takes the whole form edit back (text hidden)", (await page.inputValue("#discEdText")) === original);
+  check("and the form follows", (await page.inputValue("#discEdInspector " + labelKey)) === "Play Movie");
+  await page.click("#discEdRedo");
+  check("Redo puts it back", (await page.inputValue("#discEdText")) === edited);
+  await page.focus("#discEdInspector [data-key='menus/main/entries/0/style']");
+  await page.keyboard.press("Control+z");
+  check("Ctrl+Z with a choice focused undoes it too", (await page.inputValue("#discEdText")) === original);
+  await page.keyboard.press("Control+Shift+z");
+
+  // with the text shown, edits go through the browser's own undo
+  await page.click("#discEdToggleText");
+  await page.screenshot({ path: new URL("./shots/" + name + "-3-with-text.png", import.meta.url).pathname });
+  await page.locator("#discEdOutline button", { hasText: "Play it now" }).first().click();
+  const shownBefore = await page.inputValue("#discEdText");
+  await page.fill("#discEdInspector " + labelKey, "Shown edit");
+  await page.keyboard.press("Tab");
+  await page.waitForFunction(() => document.querySelector("#discEdText").value.includes("Shown edit"));
   await page.focus("#discEdText");
   await page.keyboard.press("Control+z");
-  const undone = await page.inputValue("#discEdText");
-  check("one Ctrl+Z in the text box takes the whole form edit back", undone === original, undone === edited ? "unchanged" : "different");
+  check("with the text shown, one Ctrl+Z in the text box takes the form edit back", (await page.inputValue("#discEdText")) === shownBefore);
   await page.keyboard.press("Control+Shift+z");
-  check("and redo puts it back", (await page.inputValue("#discEdText")) === edited);
+  check("and redo puts it back", (await page.inputValue("#discEdText")).includes("Shown edit"));
 
   // a second kind of control: a choice, then undo
-  await page.locator("#discEdOutline button", { hasText: "Play it now" }).first().click();
+  await page.locator("#discEdOutline button", { hasText: "Shown edit" }).first().click();
   await page.selectOption("#discEdInspector [data-key='menus/main/entries/0/style']", "glow");
   await page.waitForFunction(() => document.querySelector("#discEdText").value.includes('"style": "glow"'));
   check("a choice writes the property", true);

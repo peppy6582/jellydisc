@@ -16,7 +16,8 @@ const TEXT = `{
 console.log('--- rows');
 const rows = O.build(TEXT, []);
 const labels = rows.map(r => '  '.repeat(r.depth) + r.label);
-check(rows[0].kind === 'document' && rows[0].path.length === 0, 'the first row is the whole menu');
+const docRow = rows.find(r => r.kind === 'document');
+check(rows[0].label === 'Pages (2)' && docRow === rows[rows.length - 1 - rows.filter(r => r.kind === 'layer' && r.path[0] === 'layout').length] && docRow.path.length === 0, 'pages come first and the settings for the whole menu last', rows.map(r => r.label).join('|'));
 check(labels.includes('  Main Menu (first) [main]') && labels.includes('    Play - Play feature') && labels.includes('    More - Open menu'), 'menus show their title and which is first; entries show label and action', labels.join(' | '));
 check(labels.some(l => /^ {2}trailer - Trailer, 90s$/.test(l)), 'extras show type and rounded duration');
 check(rows.filter(r => r.kind === 'layer').length === 2 && rows.some(r => r.kind === 'layer' && r.path.join('/') === 'menus/more/layout/layers/0'), 'layers of the document and of a menu are listed');
@@ -29,7 +30,7 @@ const find = p => withErr.find(r => r.path.join('/') === p);
 check(find('menus/main/entries/1').errors === 2 && find('menus/main/entries/1').hasErrors, 'problems inside a button are counted on that button');
 check(find('menus/main').hasErrors && find('menus/main').errors === 0 && find('menus').hasErrors && withErr[0].hasErrors, 'and every part above it is marked as containing one');
 check(!find('menus/more').hasErrors && !find('menus/main/entries/0').hasErrors, 'other parts are not marked');
-check(withErr[0].errors === 1, 'a problem with no row of its own (the root key) counts on the whole menu');
+check(withErr.find(r => r.kind === 'document').errors === 1, 'a problem with no row of its own (the root key) counts on the whole menu');
 const gone = O.build(TEXT, [{ Message: 'm', Path: '/menus/more/entries/5/label' }]);
 check(gone.find(r => r.path.join('/') === 'menus/more').errors === 1, 'a problem about something that is not there counts on its nearest part');
 

@@ -82,7 +82,7 @@
 
         layers.forEach(function (layer, i) {
             var type = isObject(layer) && typeof layer.type === 'string' ? layer.type : 'layer';
-            rows.push({ path: base.concat(['layout', 'layers', i]), depth: depth, kind: 'layer', label: 'Layer ' + (i + 1) + ': ' + clip(type, 12) });
+            rows.push({ path: base.concat(['layout', 'layers', i]), depth: depth, kind: 'layer', label: 'Decoration ' + (i + 1) + ': ' + clip(type, 12) });
         });
     }
 
@@ -98,8 +98,33 @@
             return null;
         }
 
-        var rows = [{ path: [], depth: 0, kind: 'document', label: 'Whole menu' }];
-        layerRows(rows, isObject(doc.layout) ? doc.layout.layers : null, [], 1);
+        // Pages first (that is what people come to change), then extras, then the settings that apply to the whole menu.
+        var rows = [];
+        if (isObject(doc.menus)) {
+            var menuKeys = Object.keys(doc.menus);
+            rows.push({ path: ['menus'], depth: 0, kind: 'group', label: 'Pages (' + menuKeys.length + ')' });
+            menuKeys.forEach(function (k) {
+                var m = doc.menus[k];
+                var title = isObject(m) && typeof m.title === 'string' ? m.title : '';
+                rows.push({ path: ['menus', k], depth: 1, kind: 'menu', label: clip(title || k, 40) + (k === doc.root ? ' (first)' : '') + ' [' + clip(k, 20) + ']' });
+                if (!isObject(m)) {
+                    return;
+                }
+
+                if (Array.isArray(m.entries)) {
+                    m.entries.forEach(function (e, i) {
+                        var action = isObject(e) && typeof e.action === 'string' ? e.action : '?';
+                        var label = isObject(e) && typeof e.label === 'string' ? e.label : '';
+                        rows.push({
+                            path: ['menus', k, 'entries', i], depth: 2, kind: 'entry',
+                            label: clip(label || '(no label)', 40) + ' - ' + (ACTIONS[action] || clip(action, 14))
+                        });
+                    });
+                }
+
+                layerRows(rows, isObject(m.layout) ? m.layout.layers : null, ['menus', k], 2);
+            });
+        }
 
         if (isObject(doc.extras)) {
             var extraKeys = Object.keys(doc.extras);
@@ -111,30 +136,8 @@
             });
         }
 
-        if (isObject(doc.menus)) {
-            var menuKeys = Object.keys(doc.menus);
-            rows.push({ path: ['menus'], depth: 0, kind: 'group', label: 'Menus (' + menuKeys.length + ')' });
-            menuKeys.forEach(function (k) {
-                var m = doc.menus[k];
-                var title = isObject(m) && typeof m.title === 'string' ? m.title : '';
-                rows.push({ path: ['menus', k], depth: 1, kind: 'menu', label: clip(title || k, 40) + (k === doc.root ? ' (first)' : '') + ' [' + clip(k, 20) + ']' });
-                if (!isObject(m)) {
-                    return;
-                }
-
-                layerRows(rows, isObject(m.layout) ? m.layout.layers : null, ['menus', k], 2);
-                if (Array.isArray(m.entries)) {
-                    m.entries.forEach(function (e, i) {
-                        var action = isObject(e) && typeof e.action === 'string' ? e.action : '?';
-                        var label = isObject(e) && typeof e.label === 'string' ? e.label : '';
-                        rows.push({
-                            path: ['menus', k, 'entries', i], depth: 2, kind: 'entry',
-                            label: clip(label || '(no label)', 40) + ' - ' + (ACTIONS[action] || clip(action, 14))
-                        });
-                    });
-                }
-            });
-        }
+        rows.push({ path: [], depth: 0, kind: 'document', label: 'Settings for the whole menu' });
+        layerRows(rows, isObject(doc.layout) ? doc.layout.layers : null, [], 1);
 
         rows.forEach(function (r) { r.errors = 0; r.hasErrors = false; });
         (errors || []).forEach(function (err) {

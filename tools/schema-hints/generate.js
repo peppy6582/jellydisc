@@ -221,6 +221,7 @@ function applyOverrides() {
 
         const names = kind.fields.map((f) => f.name);
         (o.order || []).forEach((n) => { if (!names.includes(n)) { problems.push('overrides.json: ' + kindName + '.order names missing field "' + n + '"'); } });
+        (o.basic || []).forEach((n) => { if (!names.includes(n)) { problems.push('overrides.json: ' + kindName + '.basic names missing field "' + n + '"'); } });
         Object.keys(o.fields || {}).forEach((n) => {
             const target = kind.fields.find((f) => f.name === n);
             if (!target) {
@@ -235,7 +236,7 @@ function applyOverrides() {
             kind.fields.sort((a, b) => rank(a.name) - rank(b.name));
         }
 
-        ['title', 'create', 'hidden'].forEach((k) => { if (o[k] !== undefined) { kind[k] = o[k]; } });
+        ['title', 'create', 'hidden', 'basic', 'moreLabel', 'moreAuto', 'hint'].forEach((k) => { if (o[k] !== undefined) { kind[k] = o[k]; } });
         Object.keys(kind.variants || {}).forEach((v) => {
             const vo = (o.variants || {})[v];
             if (vo) {

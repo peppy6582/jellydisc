@@ -58,6 +58,7 @@
             var ok = false;
             try {
                 ta.focus({ preventScroll: true });
+                if (doc.activeElement !== ta) { return false; } // not focusable (hidden): the command would edit whatever else has focus
                 ta.setSelectionRange(d.start, d.endOld);
                 ok = d.replacement === '' ? doc.execCommand('delete') : doc.execCommand('insertText', false, d.replacement);
             } catch (e) {
@@ -107,6 +108,7 @@
             var before = ta.value;
             try {
                 ta.focus({ preventScroll: true });
+                if (doc.activeElement !== ta) { return false; }
                 doc.execCommand(name);
             } catch (e) {
                 return false;

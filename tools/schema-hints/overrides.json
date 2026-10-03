@@ -57,7 +57,13 @@
           "label": "Layout (for every page)",
           "create": {}
         }
-      }
+      },
+      "basic": [
+        "root"
+      ],
+      "moreLabel": "Settings for the whole menu (background, colours, sounds, layout)",
+      "moreAuto": false,
+      "hint": "Choose a page from the list on the left to change its buttons."
     },
     "meta": {
       "title": "About this menu",
@@ -201,7 +207,15 @@
           "label": "Music and sounds (this page only)",
           "create": {}
         }
-      }
+      },
+      "basic": [
+        "title",
+        "entries",
+        "background"
+      ],
+      "moreLabel": "More for this page (colours, layout, music)",
+      "moreAuto": false,
+      "hint": "Choose a button to change it, or add a new one."
     },
     "entry": {
       "title": "Button",
@@ -260,7 +274,18 @@
         "imageFocus": {
           "label": "Picture when highlighted"
         }
-      }
+      },
+      "basic": [
+        "action",
+        "label",
+        "extra",
+        "extras",
+        "menu",
+        "startChapter",
+        "perPage"
+      ],
+      "moreLabel": "Look and position of this button",
+      "hint": "Changes show in the preview straight away."
     },
     "background": {
       "title": "Background",
@@ -355,7 +380,11 @@
           "default": 0.4,
           "step": 0.05
         }
-      }
+      },
+      "basic": [
+        "source",
+        "dim"
+      ]
     },
     "theme": {
       "title": "Colours and text",
@@ -403,7 +432,12 @@
           "label": "Letter spacing (em)",
           "step": 0.01
         }
-      }
+      },
+      "basic": [
+        "id",
+        "accent",
+        "font"
+      ]
     },
     "audio": {
       "title": "Music and sounds",
@@ -420,7 +454,11 @@
             "preset": "click"
           }
         }
-      }
+      },
+      "basic": [
+        "music",
+        "sounds"
+      ]
     },
     "music": {
       "title": "Background music",
@@ -473,7 +511,11 @@
         "back": {
           "label": "Sound file when going back"
         }
-      }
+      },
+      "basic": [
+        "preset",
+        "volume"
+      ]
     },
     "layout": {
       "title": "Layout",
@@ -533,7 +575,14 @@
             "opacity": 0.6
           }
         }
-      }
+      },
+      "basic": [
+        "buttonStyle",
+        "titlePosition",
+        "hideTitle",
+        "layers"
+      ],
+      "moreLabel": "Grid and animation"
     },
     "transition": {
       "title": "Animation between pages",
@@ -612,7 +661,11 @@
           "label": "Which point of the item is placed",
           "default": "top-left"
         }
-      }
+      },
+      "basic": [
+        "x",
+        "y"
+      ]
     },
     "layer": {
       "title": "Decorative layer",
@@ -667,7 +720,15 @@
           "label": "How the picture fills its box",
           "default": "contain"
         }
-      }
+      },
+      "basic": [
+        "type",
+        "position",
+        "fill",
+        "image",
+        "opacity"
+      ],
+      "hint": "A decorative shape or picture drawn behind the buttons."
     },
     "extra": {
       "title": "Extra",
@@ -700,7 +761,12 @@
         "optional": {
           "label": "Fine if it is missing"
         }
-      }
+      },
+      "basic": [
+        "type",
+        "durationSec"
+      ],
+      "hint": "An extra the disc has. The length is how the menu finds the right file."
     }
   }
 }

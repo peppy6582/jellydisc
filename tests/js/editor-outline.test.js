@@ -65,6 +65,8 @@ const sel=w=>{ const t=$(w,'discEdText'); return t.value.slice(t.selectionStart,
   check(pb&&pb.textContent==='menus.main.entries[2].menu','a problem with a path gets a button naming it (buttons counted from 1)', pb&&pb.textContent);
   pb.click(); await sleep(20);
   check(sel(w)==='"menu": "ghost"','clicking it selects the offending text', sel(w));
+  check($(w,'discEdTextPane').hidden===false,'and shows the text if it was hidden');
+  check($(w,'discEdTextPane').hidden===false,'a syntax problem shows the text, the only place it can be fixed');
   check(/Line 3, column 4/.test(items[1].textContent)&&!/menus\./.test(items[1].querySelector('button').textContent),'a syntax problem keeps its line and column');
   check(items[2].querySelector('button')===null,'a problem with neither is just text');
   // a path to something that isn't in the text lands on the part that holds it

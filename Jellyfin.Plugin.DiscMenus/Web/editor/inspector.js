@@ -763,16 +763,49 @@
                 requiredNow = k.requiredWhen.values[node[k.requiredWhen.field]];
             }
 
-            visibleFields(kindName, node).forEach(function (f0) {
-                if ((only && only.indexOf(f0.name) < 0) || (except && except.indexOf(f0.name) >= 0)) {
-                    return;
+            // Only the few fields that matter are shown at first; the rest sit under "More options", which opens by itself when something in it is set
+            // (so nothing the menu already uses is hidden).
+            var all = visibleFields(kindName, node).filter(function (f0) {
+                return !((only && only.indexOf(f0.name) < 0) || (except && except.indexOf(f0.name) >= 0));
+            });
+            var isBasic = function (f0) {
+                return !k.basic || k.basic.indexOf(f0.name) >= 0 || f0.required || requiredNow.indexOf(f0.name) >= 0;
+            };
+            var moreFields = all.filter(function (f0) { return !isBasic(f0); });
+            var moreBox = null;
+            var moreTarget = function () {
+                if (!moreBox) {
+                    var moreKey = path.join('/') + '#more-' + kindName;
+                    var present = k.moreAuto !== false && moreFields.some(function (f0) { return node[f0.name] !== undefined; });
+                    moreBox = el('details', 'discEdMore');
+                    moreBox.open = openGroups[moreKey] !== undefined ? openGroups[moreKey] : present;
+                    moreBox.addEventListener('toggle', function () { openGroups[moreKey] = moreBox.open; });
+                    moreBox.appendChild(el('summary', null, k.moreLabel || 'More options'));
+                    into.appendChild(moreBox);
                 }
 
+                return moreBox;
+            };
+
+            all.forEach(function (f0) {
                 var f = f0;
                 if (requiredNow.indexOf(f.name) >= 0 && !f.required) {
                     f = JSON.parse(JSON.stringify(f0));
                     f.required = true;
                 }
+
+                var into0 = into;
+                into = isBasic(f0) ? into0 : moreTarget();
+                try {
+                    renderOneField(into, kindName, path, node, f);
+                } finally {
+                    into = into0;
+                }
+            });
+        }
+
+        function renderOneField(into, kindName, path, node, f) {
+            {
 
                 if (f.type === 'object') {
                     renderGroup(path, kindName, f, node, into);
@@ -814,7 +847,7 @@
                 }
 
                 into.appendChild(row);
-            });
+            }
         }
 
         // ---- the whole-menu form also manages the pages and extras --------------------
@@ -968,6 +1001,47 @@
             return path.map(function (p) { return typeof p === 'number' ? '[' + (p + 1) + ']' : '.' + p; }).join('').replace(/^\./, '');
         }
 
+        // What the author sees as the heading, in their words rather than as a path.
+        function titleOf(kind, path, node, k) {
+            if (kind === 'entry') {
+                return 'Button: ' + (typeof node.label === 'string' && node.label ? node.label : '(no text)');
+            }
+
+            if (kind === 'menu') {
+                return 'Page: ' + (typeof node.title === 'string' && node.title ? node.title : path[1]);
+            }
+
+            if (kind === 'extra') {
+                return 'Extra: ' + path[1];
+            }
+
+            if (kind === 'layer') {
+                return 'Decoration ' + (path[path.length - 1] + 1);
+            }
+
+            return k.title || kind;
+        }
+
+        // The part one level up, for the "back" link.
+        function parentOf(kind, path) {
+            if (kind === 'entry') {
+                var page = doc.menus && doc.menus[path[1]];
+                return { path: path.slice(0, 2), label: 'Back to ' + (page && page.title ? page.title : path[1]) };
+            }
+
+            if (kind === 'layer') {
+                var parent = path.slice(0, -3);
+                var node = at(doc, parent);
+                return { path: parent, label: 'Back to ' + (parent.length ? (node && node.title ? node.title : parent[1]) : 'the whole menu') };
+            }
+
+            if (kind === 'menu' || kind === 'extra') {
+                return { path: [], label: 'Back to the whole menu' };
+            }
+
+            return null;
+        }
+
         function focusKey() {
             var a = document.activeElement;
             if (a && container.contains(a) && a.dataset && a.dataset.key) {
@@ -1023,8 +1097,19 @@
             var node = at(doc, current);
             var k = kindDef(found.kind);
             var head = el('div', 'discEdInspHead');
-            head.appendChild(el('strong', null, (k.title || found.kind) + (current.length ? ': ' + describePath(current) : '')));
+            var up = parentOf(found.kind, current);
+            if (up) {
+                var back = el('button', 'discEdLink discEdBack', '\u2190 ' + up.label);
+                back.type = 'button';
+                back.addEventListener('click', function () { options.select(up.path); });
+                head.appendChild(back);
+            }
+
+            head.appendChild(el('strong', 'discEdTitle', titleOf(found.kind, current, node, k)));
             container.appendChild(head);
+            if (k.hint) {
+                container.appendChild(el('div', 'discEdHint', k.hint));
+            }
             var msg = el('div', 'discEdInspMsg');
             msg.setAttribute('role', 'alert');
             msg.textContent = message || '';

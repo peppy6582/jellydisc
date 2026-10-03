@@ -41,7 +41,11 @@
               }
             }
           ],
-          "title": "Music and sounds"
+          "title": "Music and sounds",
+          "basic": [
+            "music",
+            "sounds"
+          ]
         },
         "background": {
           "fields": [
@@ -218,7 +222,11 @@
               ]
             }
           },
-          "title": "Background"
+          "title": "Background",
+          "basic": [
+            "source",
+            "dim"
+          ]
         },
         "document": {
           "fields": [
@@ -317,7 +325,13 @@
               "hidden": true
             }
           ],
-          "title": "Whole menu"
+          "title": "Whole menu",
+          "basic": [
+            "root"
+          ],
+          "moreLabel": "Settings for the whole menu (background, colours, sounds, layout)",
+          "moreAuto": false,
+          "hint": "Choose a page from the list on the left to change its buttons."
         },
         "entry": {
           "fields": [
@@ -535,7 +549,18 @@
               ]
             }
           },
-          "title": "Button"
+          "title": "Button",
+          "basic": [
+            "action",
+            "label",
+            "extra",
+            "extras",
+            "menu",
+            "startChapter",
+            "perPage"
+          ],
+          "moreLabel": "Look and position of this button",
+          "hint": "Changes show in the preview straight away."
         },
         "extra": {
           "fields": [
@@ -596,7 +621,12 @@
           "create": {
             "type": "Featurette",
             "durationSec": 60
-          }
+          },
+          "basic": [
+            "type",
+            "durationSec"
+          ],
+          "hint": "An extra the disc has. The length is how the menu finds the right file."
         },
         "flow": {
           "fields": [
@@ -782,7 +812,15 @@
               ]
             }
           },
-          "title": "Decorative layer"
+          "title": "Decorative layer",
+          "basic": [
+            "type",
+            "position",
+            "fill",
+            "image",
+            "opacity"
+          ],
+          "hint": "A decorative shape or picture drawn behind the buttons."
         },
         "layout": {
           "fields": [
@@ -862,7 +900,14 @@
               }
             }
           ],
-          "title": "Layout"
+          "title": "Layout",
+          "basic": [
+            "buttonStyle",
+            "titlePosition",
+            "hideTitle",
+            "layers"
+          ],
+          "moreLabel": "Grid and animation"
         },
         "match": {
           "fields": [
@@ -966,7 +1011,15 @@
               "create": {}
             }
           ],
-          "title": "Page"
+          "title": "Page",
+          "basic": [
+            "title",
+            "entries",
+            "background"
+          ],
+          "moreLabel": "More for this page (colours, layout, music)",
+          "moreAuto": false,
+          "hint": "Choose a button to change it, or add a new one."
         },
         "meta": {
           "fields": [
@@ -1111,7 +1164,11 @@
               "default": "top-left"
             }
           ],
-          "title": "Place on the screen"
+          "title": "Place on the screen",
+          "basic": [
+            "x",
+            "y"
+          ]
         },
         "providerIds": {
           "fields": [
@@ -1236,7 +1293,11 @@
               "label": "Sound file when going back"
             }
           ],
-          "title": "Button sounds"
+          "title": "Button sounds",
+          "basic": [
+            "preset",
+            "volume"
+          ]
         },
         "theme": {
           "fields": [
@@ -1319,7 +1380,12 @@
               "step": 0.01
             }
           ],
-          "title": "Colours and text"
+          "title": "Colours and text",
+          "basic": [
+            "id",
+            "accent",
+            "font"
+          ]
         },
         "transition": {
           "fields": [
