@@ -103,13 +103,10 @@
     }
 
     function makeRowButton(itemId) {
-        var btn;
-        try {
-            btn = document.createElement('button', { is: 'emby-button' });
-        } catch (ignore) {
-            btn = document.createElement('button');
-        }
-
+        // jellyfin-web turns <button is="emby-button"> into its styled, focusable button when it is put in the page (its own templates do the
+        // same). createElement('button', { is }) is not used: the polyfill jellyfin-web loads does not accept that form.
+        var btn = document.createElement('button');
+        btn.setAttribute('is', 'emby-button');
         btn.id = BUTTON_ID;
         btn.type = 'button';
         btn.className = 'button-flat btnDiscMenu detailButton';
@@ -143,33 +140,63 @@
         return btn;
     }
 
+    function insertInRow(row, btn) {
+        var play = row.querySelector('.btnPlay');
+        if (play && play.parentNode === row) {
+            row.insertBefore(btn, play.nextSibling);
+        } else {
+            row.insertBefore(btn, row.firstChild);
+        }
+    }
+
+    // jellyfin-web, as opposed to some other page that happens to load this script (the page may not have drawn the item page yet when this runs).
+    function looksLikeJellyfinWeb() {
+        return document.body.classList.contains('libraryDocument') ||
+            !!document.querySelector('#reactRoot, .skinBody, .mainAnimatedPages, .itemDetailPage, #itemDetailPage, .mainDetailButtons');
+    }
+
     function addButton(itemId) {
         var tries = 0;
+        var floating = null;
         (function place() {
-            if (currentParentItemId !== itemId || document.getElementById(BUTTON_ID)) {
+            if (currentParentItemId !== itemId) {
+                return;
+            }
+
+            var existing = document.getElementById(BUTTON_ID);
+            if (existing && existing !== floating) {
                 return;
             }
 
             var row = findButtonRow();
             if (row) {
-                var btn = makeRowButton(itemId);
-                var play = row.querySelector('.btnPlay');
-                if (play && play.parentNode === row) {
-                    row.insertBefore(btn, play.nextSibling);
-                } else {
-                    row.insertBefore(btn, row.firstChild);
+                if (floating) {
+                    floating.remove(); // the page finished drawing after the fallback was shown: move into the row
+                    floating = null;
                 }
 
+                insertInRow(row, makeRowButton(itemId));
                 return;
             }
 
-            // The item page may still be drawing its buttons: give it a few seconds before using the floating button.
-            if (document.querySelector('#itemDetailPage') && tries++ < 25) {
-                setTimeout(place, 200);
-                return;
+            // The item page may still be drawing its buttons (slowly, on a busy server): give it a few seconds, then show the floating button
+            // so the menu is usable, and keep watching for a minute in case the row appears later. On a page that is not jellyfin-web there is
+            // no row to wait for: the floating button is shown at once and that is all.
+            var jellyfin = looksLikeJellyfinWeb();
+            if (!floating) {
+                if (jellyfin && tries++ < 25) {
+                    setTimeout(place, 200);
+                    return;
+                }
+
+                floating = makeFloatingButton(itemId);
+                document.body.appendChild(floating);
+                tries = 0;
             }
 
-            document.body.appendChild(makeFloatingButton(itemId));
+            if (jellyfin && tries++ < 120) {
+                setTimeout(place, 500);
+            }
         })();
     }
 
