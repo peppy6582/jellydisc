@@ -1,6 +1,6 @@
 name: "Disc Menus"
 guid: "913b9d44-cafe-4fe7-ae0b-f1362dc12cc7"
-version: "0.4.0.0"
+version: "0.4.1.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 owner: "peppy6582"
@@ -16,6 +16,9 @@ category: "General"
 artifacts:
   - "Jellyfin.Plugin.DiscMenus.dll"
 changelog: >
+  - 0.4.1.0: Menu Editor: upload pictures and sounds for a menu and choose them from a panel (checked for type,
+    contents and size; uploaded files are public like all menu assets), and pick a title's TMDB backdrops from
+    a list. The Disc Menu button now sits in the item page's own button row, right after Play.
   - 0.4.0.0: A new Menu Editor: choose a page or button from a list and change it in a form (the raw text is
     optional, behind Show text), with only the essentials shown and the rest under More options. Problems say
     which part they are about and clicking one selects it. Add, move and remove buttons, pages, extras and
