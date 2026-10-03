@@ -75,6 +75,13 @@
                     .discEdErrors .title { color: #e55; font-weight: 600; }
                     .discEdErrors button.line { background: none; border: none; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
                     .discEdPanel { margin: 0 0 1em; padding: 0.75em; border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; }
+                    .discEdPicsList { display: grid; grid-template-columns: repeat(auto-fill, minmax(11em, 1fr)); gap: 0.6em; margin-top: 0.5em; }
+                    .discEdPicsList .discEdPic { border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 4px; padding: 0.4em; display: flex; flex-direction: column; gap: 0.3em; min-width: 0; }
+                    .discEdPicsList img { width: 100%; height: 6em; object-fit: cover; border-radius: 3px; background: rgba(128, 128, 128, 0.2); }
+                    .discEdPicsList audio { width: 100%; }
+                    .discEdPicsList .discEdPicName { font-size: 0.8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                    .discEdPicsList .discEdPicActions { display: flex; gap: 0.3em; }
+                    .discEdPicsUpload { margin: 0.4em 0; }
                     .discEdRow { display: flex; flex-wrap: wrap; gap: 0.6em; align-items: center; padding: 0.35em 0; border-top: 1px solid rgba(128, 128, 128, 0.25); }
                     .discEdRow .grow { flex: 1 1 14em; }
                     .discEdConflict { margin: 0.5em 0; padding: 0.75em; border: 1px solid #e90; border-radius: 4px; }
@@ -126,6 +133,19 @@
                     </div>
                     <div id="discEdNewMsg" class="fieldDescription" role="status"></div>
                     <div id="discEdNewList"></div>
+                </div>
+
+                <div id="discEdPicsPanel" class="discEdPanel" hidden>
+                    <div class="discEdPreviewBar">
+                        <strong class="grow" id="discEdPicsTitle">Choose a picture</strong>
+                        <button id="discEdPicsClose" is="emby-button" type="button" class="raised"><span>Close</span></button>
+                    </div>
+                    <div id="discEdPicsUpload" class="discEdPicsUpload">
+                        <input id="discEdPicsFile" type="file" aria-label="Upload a file" />
+                        <div id="discEdPicsRules" class="fieldDescription"></div>
+                    </div>
+                    <div id="discEdPicsMsg" class="fieldDescription" role="status"></div>
+                    <div id="discEdPicsList" class="discEdPicsList"></div>
                 </div>
 
                 <div id="discEdBackupPanel" class="discEdPanel" hidden>
@@ -197,6 +217,8 @@
                 fanartGrid: $('discEdFanartGrid'), fanartMore: $('discEdFanartMore'),
                 newBtn: $('discEdNew'), dup: $('discEdDuplicate'), backupsBtn: $('discEdBackups'), del: $('discEdDelete'),
                 newPanel: $('discEdNewPanel'), newQuery: $('discEdNewQuery'), newClose: $('discEdNewClose'), newMsg: $('discEdNewMsg'), newList: $('discEdNewList'),
+                picsPanel: $('discEdPicsPanel'), picsTitle: $('discEdPicsTitle'), picsClose: $('discEdPicsClose'), picsUpload: $('discEdPicsUpload'),
+                picsFile: $('discEdPicsFile'), picsRules: $('discEdPicsRules'), picsMsg: $('discEdPicsMsg'), picsList: $('discEdPicsList'),
                 backupPanel: $('discEdBackupPanel'), backupClose: $('discEdBackupClose'), backupTitle: $('discEdBackupTitle'),
                 backupMsg: $('discEdBackupMsg'), backupList: $('discEdBackupList'),
                 outline: $('discEdOutline'), toggleText: $('discEdToggleText'), undo: $('discEdUndo'), redo: $('discEdRedo'), textPane: $('discEdTextPane'), inspector: $('discEdInspector'),
@@ -210,17 +232,17 @@
                 fanart: null, fanartShown: 0, fanartPicked: null,
                 file: null, version: null, loadedText: '', loadedRevision: null, files: [],
                 lastGood: null, shownOnce: false, seq: 0, timer: null, muted: true, loadSeq: 0,
-                titleSeq: 0, selected: [], errors: [], errorSource: null // who produced the errors on screen: 'preview' or 'save'
+                titleSeq: 0, pick: null, selected: [], errors: [], errorSource: null // who produced the errors on screen: 'preview' or 'save'
             };
 
             // ---- script modules ---------------------------------------------------------------
             // json-text.js (in-place JSON edits by path) and text-adapter.js (one native undo step per edit) are served by the plugin.
             // They are loaded here, inside the page element, because only the page's own fragment is reliably run by the dashboard.
-            var MODULES = ['json-text', 'text-adapter', 'outline', 'schema-hints', 'inspector'];
+            var MODULES = ['json-text', 'text-adapter', 'outline', 'schema-hints', 'inspector', 'pictures'];
             var adapter = null;
 
             function modulesReady() {
-                return !!(window.DiscMenusJsonText && window.DiscMenusTextAdapter && window.DiscMenusOutline && window.DiscMenusSchemaHints && window.DiscMenusInspector);
+                return !!(window.DiscMenusJsonText && window.DiscMenusTextAdapter && window.DiscMenusOutline && window.DiscMenusSchemaHints && window.DiscMenusInspector && window.DiscMenusPictures);
             }
 
             function loadModules() {
@@ -316,6 +338,226 @@
             function hidePanels() {
                 el.newPanel.hidden = true;
                 el.backupPanel.hidden = true;
+                el.picsPanel.hidden = true;
+                state.pick = null;
+            }
+
+            // ---- pictures, sounds and TMDB backdrops -------------------------------------------
+            // A "Choose…" button on a picture or sound field opens this panel. The menu's uploaded files live in assets/<menuId>/ on the server.
+            // Choosing writes the reference into the field (the same edit the form makes), so it is one undo step like any other.
+            function currentMenuId() {
+                try {
+                    var d = JSON.parse(el.text.value);
+                    return d && typeof d.menuId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(d.menuId) ? d.menuId : null;
+                } catch (ignore) {
+                    return null;
+                }
+            }
+
+            function picsNote(text) {
+                el.picsMsg.textContent = text || '';
+            }
+
+            function usePick(value) {
+                if (state.pick && state.pick.write(value)) {
+                    hidePanels();
+                    setStatus('Changed. It shows in the preview now.', 'ok');
+                } else {
+                    picsNote('That could not be used here. Fix the problem shown in the form first.');
+                }
+            }
+
+            function picCard(thumbSrc, name, detail) {
+                var card = document.createElement('div');
+                card.className = 'discEdPic';
+                if (thumbSrc) {
+                    var img = document.createElement('img');
+                    img.loading = 'lazy';
+                    img.alt = '';
+                    img.src = thumbSrc;
+                    card.appendChild(img);
+                }
+
+                var label = document.createElement('div');
+                label.className = 'discEdPicName';
+                label.textContent = name;
+                label.title = name + (detail ? ' - ' + detail : '');
+                card.appendChild(label);
+                if (detail) {
+                    var d = document.createElement('div');
+                    d.className = 'fieldDescription';
+                    d.textContent = detail;
+                    card.appendChild(d);
+                }
+
+                return card;
+            }
+
+            function loadAssets() {
+                var id = currentMenuId();
+                if (!id) {
+                    picsNote('This menu needs a valid menuId before it can have files.');
+                    return;
+                }
+
+                picsNote('Loading…');
+                callApi('GET', 'DiscMenus/Editor/Assets', { menu: id }).then(function (r) {
+                    el.picsList.textContent = '';
+                    if (!r.ok) {
+                        picsNote('The files could not be listed. See the server log.');
+                        return;
+                    }
+
+                    var kind = state.pick && state.pick.type;
+                    var files = (Array.isArray(r.data) ? r.data : []).filter(function (a) { return a && a.Kind === kind && typeof a.Name === 'string'; });
+                    picsNote(files.length ? '' : 'Nothing uploaded for this menu yet. Choose a file above.');
+                    files.forEach(function (a) {
+                        var route = window.DiscMenusPictures.assetRoute(a.Ref);
+                        if (!route) {
+                            return;
+                        }
+
+                        var url = ApiClient.getUrl(route);
+                        var card = picCard(kind === 'image' ? url : null, a.Name, window.DiscMenusPictures.size(a.Size));
+                        if (kind === 'audio') {
+                            var audio = document.createElement('audio');
+                            audio.controls = true;
+                            audio.preload = 'none';
+                            audio.src = url;
+                            card.insertBefore(audio, card.firstChild);
+                        }
+
+                        var actions = document.createElement('div');
+                        actions.className = 'discEdPicActions';
+                        var use = document.createElement('button');
+                        use.type = 'button';
+                        use.className = 'raised';
+                        use.textContent = state.pick.current === a.Ref ? 'In use' : 'Use';
+                        use.addEventListener('click', function () { usePick(a.Ref); });
+                        var del = document.createElement('button');
+                        del.type = 'button';
+                        del.className = 'raised';
+                        del.textContent = 'Delete';
+                        del.addEventListener('click', function () {
+                            var inUse = el.text.value.indexOf(a.Ref) >= 0;
+                            if (!window.confirm('Delete ' + a.Name + '?' + (inUse ? ' This menu still uses it, so it will show nothing until you change it.' : ''))) {
+                                return;
+                            }
+
+                            callApi('DELETE', 'DiscMenus/Editor/Assets', { menu: id, name: a.Name }).then(function (res) {
+                                if (res.ok) {
+                                    loadAssets();
+                                } else {
+                                    picsNote(firstMessage(res, 'That file could not be deleted.'));
+                                }
+                            });
+                        });
+                        actions.appendChild(use);
+                        actions.appendChild(del);
+                        card.appendChild(actions);
+                        el.picsList.appendChild(card);
+                    });
+                });
+            }
+
+            function uploadAsset(file) {
+                var P = window.DiscMenusPictures;
+                var kind = state.pick && state.pick.type;
+                var id = currentMenuId();
+                var why = P.precheck(file, kind);
+                if (why || !id) {
+                    picsNote(why || 'This menu needs a valid menuId before it can have files.');
+                    return;
+                }
+
+                // ApiClient.ajax turns anything that is not text into a form, so the file goes straight through fetch with the server's token.
+                var headers = { 'Content-Type': 'application/octet-stream' };
+                var token = typeof ApiClient.accessToken === 'function' ? ApiClient.accessToken() : null;
+                if (token) {
+                    headers['X-Emby-Token'] = token;
+                }
+
+                picsNote('Uploading ' + file.name + ' (' + P.size(file.size) + ')…');
+                Promise.resolve().then(function () {
+                    return window.fetch(ApiClient.getUrl('DiscMenus/Editor/Assets', { menu: id, name: file.name }), {
+                        method: 'POST', headers: headers, body: file, credentials: 'same-origin'
+                    });
+                }).then(function (res) {
+                    return res.json().then(function (data) { return { ok: res.ok, status: res.status, data: data }; }, function () { return { ok: res.ok, status: res.status, data: null }; });
+                }).then(function (r) {
+                    if (!r.ok || !r.data || !r.data.Ref) {
+                        picsNote(r.status === 413 ? 'That file is too large.' : firstMessage(r, 'The upload failed. See the server log.'));
+                        return;
+                    }
+
+                    usePick(r.data.Ref);
+                }, function () {
+                    picsNote('The upload could not reach the server.');
+                });
+            }
+
+            function loadTmdb() {
+                var item = state.lastGood && state.lastGood.ParentItemId;
+                if (!item) {
+                    picsNote('Link this menu to a library title first, so the picker knows whose backdrops to list.');
+                    return;
+                }
+
+                picsNote('Asking for the title\'s TMDB backdrops…');
+                callApi('GET', 'Items/' + encodeURIComponent(item) + '/RemoteImages', { type: 'Backdrop', providerName: 'TheMovieDb', limit: 60 }).then(function (r) {
+                    el.picsList.textContent = '';
+                    if (!r.ok) {
+                        picsNote('The list could not be fetched. Jellyfin needs its TheMovieDb provider enabled for this library.');
+                        return;
+                    }
+
+                    var P = window.DiscMenusPictures;
+                    var shown = 0;
+                    (r.data && Array.isArray(r.data.Images) ? r.data.Images : []).forEach(function (img) {
+                        var path = img && P.tmdbPath(img.Url);
+                        if (!path) {
+                            return;
+                        }
+
+                        shown++;
+                        var detail = [img.Width && img.Height ? img.Width + '\u00d7' + img.Height : null, typeof img.Language === 'string' ? img.Language : null].filter(Boolean).join(', ');
+                        var card = picCard(P.tmdbThumb(img.ThumbnailUrl) || P.tmdbThumb(img.Url), path, detail);
+                        var actions = document.createElement('div');
+                        actions.className = 'discEdPicActions';
+                        var use = document.createElement('button');
+                        use.type = 'button';
+                        use.className = 'raised';
+                        use.textContent = state.pick.current === path ? 'In use' : 'Use';
+                        use.addEventListener('click', function () { usePick(path); });
+                        actions.appendChild(use);
+                        card.appendChild(actions);
+                        el.picsList.appendChild(card);
+                    });
+                    picsNote(shown ? 'Viewers\' browsers load the chosen picture from TMDB\'s image server.' : 'TMDB lists no backdrops for this title.');
+                });
+            }
+
+            function openPicker(req) {
+                hidePanels();
+                state.pick = req;
+                el.picsPanel.hidden = false;
+                el.picsList.textContent = '';
+                var P = window.DiscMenusPictures;
+                if (req.type === 'tmdb') {
+                    el.picsTitle.textContent = 'Pick a TMDB backdrop';
+                    el.picsUpload.hidden = true;
+                    loadTmdb();
+                    return;
+                }
+
+                el.picsTitle.textContent = req.type === 'audio' ? 'Choose or upload a sound' : 'Choose or upload a picture';
+                el.picsUpload.hidden = false;
+                el.picsFile.value = '';
+                el.picsFile.accept = P.accept(req.type);
+                el.picsRules.textContent = (req.type === 'audio' ? 'Sounds: mp3, ogg, opus, m4a or wav, up to 25 MB. ' : 'Pictures: png, jpg or webp, up to 5 MB. ') +
+                    'Uploaded files are public: anyone who can reach your server and knows the address can fetch them, so upload only what you have the right to share. ' +
+                    'They are kept with this menu on this server.';
+                loadAssets();
             }
 
             function openCreated(file) {
@@ -594,6 +836,7 @@
                     },
                     select: function (path) { selectPath(path, false); },
                     actions: {
+                        pick: function (req) { openPicker(req); },
                         fanart: function (path) {
                             openFanart();
                             var target = path[0] === 'menus' ? path[1] : '';
@@ -1278,6 +1521,12 @@
                     e.preventDefault();
                     clearTimeout(state.titleTimer);
                     searchTitles();
+                }
+            });
+            el.picsClose.addEventListener('click', function () { hidePanels(); });
+            el.picsFile.addEventListener('change', function () {
+                if (el.picsFile.files && el.picsFile.files[0]) {
+                    uploadAsset(el.picsFile.files[0]);
                 }
             });
             el.dup.addEventListener('click', duplicateFile);

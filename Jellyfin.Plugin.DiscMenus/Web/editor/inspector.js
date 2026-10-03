@@ -10,6 +10,7 @@
  *     commit(fn)  applies fn(text) -> newText as one edit; returns true if it was applied (the page uses its undo-preserving text adapter)
  *     select(path)            called when a list entry is chosen (the page selects it in the outline)
  *     actions.fanart(path)    optional: open the fanart.tv picker for the background at path
+ *     actions.pick({type, current, write})  optional: open the picture / sound / TMDB picker; write(value) puts the choice in the field
  *     confirm(message)        optional (window.confirm by default)
  *   inspector.show(path)      draw the form for the part at path (an array like ['menus','main','entries',0])
  *   inspector.refresh()       redraw from the current text, keeping the focused control
@@ -502,6 +503,22 @@
                 pick.type = 'button';
                 pick.addEventListener('click', function () { options.actions.fanart(path); });
                 line.appendChild(pick);
+            }
+
+            // Pictures and sounds can be chosen from this menu's uploaded files (or uploaded now); a TMDB backdrop from the title's list.
+            var pickType = f.control === 'tmdb' ? 'tmdb' : f.format === 'imageRef' ? 'image' : f.format === 'audioRef' ? 'audio' : null;
+            if (pickType && options.actions && options.actions.pick) {
+                var choose = el('button', 'discEdSmall', pickType === 'tmdb' ? 'Pick a TMDB backdrop…' : pickType === 'image' ? 'Choose or upload…' : 'Choose or upload…');
+                choose.type = 'button';
+                choose.dataset.key = keyOf(path, f) + '/choose';
+                choose.addEventListener('click', function () {
+                    options.actions.pick({
+                        type: pickType,
+                        current: typeof cur === 'string' ? cur : null,
+                        write: function (value) { return setField(path, kind, f, value); }
+                    });
+                });
+                line.appendChild(choose);
             }
 
             row.appendChild(line);

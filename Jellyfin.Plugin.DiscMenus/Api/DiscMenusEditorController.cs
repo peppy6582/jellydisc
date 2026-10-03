@@ -198,6 +198,37 @@ public sealed class DiscMenusEditorController : ControllerBase
     private IEnumerable<object> _discMenusBackups(string? name) =>
         _discMenuService.CreateEditor().ListBackups(name).Select(b => new { b.Stamp, b.Size, b.Revision, b.ModifiedUtc });
 
+    /// <summary>The pictures and sounds uploaded for a menu (its id is the folder), newest first.</summary>
+    [HttpGet("Assets")]
+    public ActionResult GetAssets([FromQuery] string? menu) =>
+        AssetStore.IsFolderName(menu) ? Ok(new AssetStore(DiscMenuService.AssetsPath).List(menu)) : BadRequest(new { Error = "That isn't a valid menu id." });
+
+    /// <summary>
+    /// Stores an uploaded picture or sound for a menu: the request body is the file itself. Only png, jpg, webp, mp3, ogg, opus, m4a and wav
+    /// whose contents match, within the size limits; an existing file is never replaced. Files are served without sign-in, like every asset.
+    /// </summary>
+    [HttpPost("Assets")]
+    [RequestSizeLimit(AssetStore.MaxAudioBytes + 65536)]
+    public ActionResult UploadAsset([FromQuery] string? menu, [FromQuery] string? name)
+    {
+        var result = new AssetStore(DiscMenuService.AssetsPath).Save(menu, name, Request.Body);
+        return AssetOutcome(result);
+    }
+
+    /// <summary>Deletes one uploaded file of a menu. A menu that still refers to it will show a missing picture or sound until it is changed.</summary>
+    [HttpDelete("Assets")]
+    public ActionResult DeleteAsset([FromQuery] string? menu, [FromQuery] string? name) =>
+        AssetOutcome(new AssetStore(DiscMenuService.AssetsPath).Delete(menu, name));
+
+    private ActionResult AssetOutcome(AssetResult result) => result.Kind switch
+    {
+        AssetResultKind.Ok => Ok(result.File is null ? new { Deleted = true } : (object)result.File),
+        AssetResultKind.TooLarge => StatusCode(413, new { Error = result.Error }),
+        AssetResultKind.QuotaExceeded => Conflict(new { Error = result.Error }),
+        AssetResultKind.NotFound => NotFound(new { Error = result.Error }),
+        _ => BadRequest(new { Error = result.Error }),
+    };
+
     // The body as text, or null if it exceeds the editor's size limit.
     private async Task<string?> ReadBodyAsync()
     {

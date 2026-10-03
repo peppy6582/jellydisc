@@ -261,6 +261,7 @@ public sealed class DiscMenusController : ControllerBase
         }
 
         Response.Headers.CacheControl = "no-cache";
+        Response.Headers["X-Content-Type-Options"] = "nosniff"; // an upload is only ever a picture or a sound, whatever its bytes look like
         // Range support: browsers need it to seek and loop audio/video.
         return PhysicalFile(full, contentType, new FileInfo(full).LastWriteTimeUtc, null, enableRangeProcessing: true);
     }

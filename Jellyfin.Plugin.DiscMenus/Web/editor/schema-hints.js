@@ -105,7 +105,8 @@
               "appliesTo": [
                 "tmdb"
               ],
-              "placeholder": "/abc123.jpg"
+              "placeholder": "/abc123.jpg",
+              "control": "tmdb"
             },
             {
               "name": "tmdbSize",

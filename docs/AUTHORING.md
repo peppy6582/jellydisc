@@ -270,16 +270,24 @@ the live preview update beside it.
   **Delete** removes a menu you made (a backup is kept); menus installed from the catalogue are removed on
   the Menu Catalogue page instead. **Backups…** lists the saved earlier versions; **Restore** puts one back
   as a new revision with the current `menuId` (a revision never goes down) and backs up what it replaces.
+- **Pictures, sounds and TMDB backdrops.** A picture or sound field has a **Choose or upload…** button: it lists the files uploaded for
+  this menu (kept in `assets/<menuId>/` on the server), lets you upload another and uses the one you pick as an `asset:` reference. Pictures
+  are png, jpg or webp up to 5 MB; sounds are mp3, ogg, opus, m4a or wav up to 25 MB; at most 200 files and 100 MB per menu. The server
+  checks that a file really is what its name says (no SVG, no HTML dressed as a picture), reduces the name to the characters an `asset:`
+  reference allows, and never replaces an existing file. **Uploaded files are public**: assets are served without sign-in (a browser
+  cannot send one when it loads a picture), so anyone who can reach your server and knows the address can fetch them. Upload only what you
+  have the right to share. A TMDB background has **Pick a TMDB backdrop…**, which lists the title's backdrops from Jellyfin's own
+  TheMovieDb provider; viewers' browsers load the chosen picture from TMDB's image server.
 - **Admin API:** `GET /DiscMenus/Editor/Files`, `GET /DiscMenus/Editor/File?name=`,
   `PUT /DiscMenus/Editor/File?name=&version=` (the body is the menu text), `DELETE /DiscMenus/Editor/File?name=`,
   `GET /DiscMenus/Editor/Titles?q=`, `POST /DiscMenus/Editor/New?item=&kind=blank|draft`,
   `POST /DiscMenus/Editor/Duplicate?name=`, `GET /DiscMenus/Editor/Backups?name=`,
-  `POST /DiscMenus/Editor/Restore?name=&backup=&version=` and
+  `POST /DiscMenus/Editor/Restore?name=&backup=&version=`, `GET|POST|DELETE /DiscMenus/Editor/Assets?menu=<menuId>&name=` (POST
+  takes the file as the raw body) and
   `POST /DiscMenus/Editor/Preview?file=` (the body is the menu text; returns exactly what the player
   endpoint would serve for it).
 
-Not in the editor yet: dragging buttons into place, and uploading art or audio. See the
-[roadmap](ROADMAP.md).
+Not in the editor yet: dragging buttons into place. See the [roadmap](ROADMAP.md).
 
 ## Checking a menu from the command line
 

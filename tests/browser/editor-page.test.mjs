@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { chromium, firefox, webkit } from "playwright";
 const ROOT = new URL("../../", import.meta.url).pathname;
 const ED = ROOT + "Jellyfin.Plugin.DiscMenus/Web/editor/";
-const MODULES = ["json-text", "text-adapter", "outline", "schema-hints", "inspector"].map((n) => fs.readFileSync(ED + n + ".js", "utf8"));
+const MODULES = ["json-text", "text-adapter", "outline", "schema-hints", "inspector", "pictures"].map((n) => fs.readFileSync(ED + n + ".js", "utf8"));
 const html = fs.readFileSync(ROOT + "Jellyfin.Plugin.DiscMenus/Configuration/editorPage.html", "utf8");
 const body = /<body>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script type="text\/javascript">[\s\S]*?<\/script>/, "");
 const script = /<script type="text\/javascript">([\s\S]*?)<\/script>/.exec(html)[1];
