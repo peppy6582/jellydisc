@@ -88,7 +88,47 @@
         );
     }
 
-    function addButton(itemId) {
+    // The button goes in jellyfin-web's own row of icon buttons on the item page (Play, Replay, Trailer, Played, Favourite, More), right after
+    // Play, in the same markup so it looks and focuses like the others. If the page has no such row (a different layout, or it has not been drawn
+    // yet and never appears) a floating button is used instead, so the menu can always be opened.
+    function findButtonRow() {
+        var rows = document.querySelectorAll('.mainDetailButtons');
+        for (var i = 0; i < rows.length; i++) {
+            if (!rows[i].closest('.page.hide, .hide')) {
+                return rows[i];
+            }
+        }
+
+        return null;
+    }
+
+    function makeRowButton(itemId) {
+        var btn;
+        try {
+            btn = document.createElement('button', { is: 'emby-button' });
+        } catch (ignore) {
+            btn = document.createElement('button');
+        }
+
+        btn.id = BUTTON_ID;
+        btn.type = 'button';
+        btn.className = 'button-flat btnDiscMenu detailButton';
+        btn.title = 'Disc Menu';
+        btn.setAttribute('aria-label', 'Disc Menu');
+        var content = document.createElement('div');
+        content.className = 'detailButton-content';
+        var icon = document.createElement('span');
+        icon.className = 'material-icons detailButton-icon album';
+        icon.setAttribute('aria-hidden', 'true');
+        content.appendChild(icon);
+        btn.appendChild(content);
+        btn.addEventListener('click', function () {
+            openOverlay(itemId);
+        });
+        return btn;
+    }
+
+    function makeFloatingButton(itemId) {
         var btn = document.createElement('button');
         btn.id = BUTTON_ID;
         btn.type = 'button';
@@ -100,7 +140,37 @@
         btn.addEventListener('click', function () {
             openOverlay(itemId);
         });
-        document.body.appendChild(btn);
+        return btn;
+    }
+
+    function addButton(itemId) {
+        var tries = 0;
+        (function place() {
+            if (currentParentItemId !== itemId || document.getElementById(BUTTON_ID)) {
+                return;
+            }
+
+            var row = findButtonRow();
+            if (row) {
+                var btn = makeRowButton(itemId);
+                var play = row.querySelector('.btnPlay');
+                if (play && play.parentNode === row) {
+                    row.insertBefore(btn, play.nextSibling);
+                } else {
+                    row.insertBefore(btn, row.firstChild);
+                }
+
+                return;
+            }
+
+            // The item page may still be drawing its buttons: give it a few seconds before using the floating button.
+            if (document.querySelector('#itemDetailPage') && tries++ < 25) {
+                setTimeout(place, 200);
+                return;
+            }
+
+            document.body.appendChild(makeFloatingButton(itemId));
+        })();
     }
 
     function removeButton() {
