@@ -30,7 +30,7 @@ public sealed class AssetStoreTests : IDisposable
         [".mp3"] = new byte[] { 0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0 },
     };
 
-    private AssetResult Put(string name, byte[] bytes, string folder = Folder) => _store.Save(folder, name, new MemoryStream(bytes));
+    private AssetResult Put(string name, byte[] bytes, string folder = Folder) => _store.SaveAsync(folder, name, new AsyncOnlyStream(bytes)).GetAwaiter().GetResult();
 
     [Theory]
     [InlineData(".png")]
@@ -176,7 +176,7 @@ public sealed class AssetStoreTests : IDisposable
     [Fact]
     public void AnEndlessStreamStopsAtTheLimit()
     {
-        var result = _store.Save(Folder, "forever.png", new EndlessStream(Good[".png"]));
+        var result = _store.SaveAsync(Folder, "forever.png", new EndlessStream(Good[".png"])).GetAwaiter().GetResult();
         Assert.Equal(AssetResultKind.TooLarge, result.Kind);
     }
 
@@ -273,6 +273,38 @@ public sealed class AssetStoreTests : IDisposable
         Assert.True(File.Exists(secret));
     }
 
+    /// <summary>Like the web server's request body: a synchronous Read throws, only ReadAsync works.</summary>
+    private sealed class AsyncOnlyStream : Stream
+    {
+        private readonly MemoryStream _inner;
+
+        public AsyncOnlyStream(byte[] bytes) => _inner = new MemoryStream(bytes);
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous operations are disallowed.");
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => _inner.ReadAsync(buffer, cancellationToken);
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     private sealed class EndlessStream : Stream
     {
         private readonly byte[] _head;
@@ -290,15 +322,19 @@ public sealed class AssetStoreTests : IDisposable
 
         public override long Position { get => _position; set => throw new NotSupportedException(); }
 
-        public override int Read(byte[] buffer, int offset, int count)
+        public override int Read(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous operations are disallowed.");
+
+        public override ValueTask<int> ReadAsync(Memory<byte> memory, CancellationToken cancellationToken = default)
         {
+            var buffer = memory.Span;
+            var count = buffer.Length;
             for (var i = 0; i < count; i++)
             {
-                buffer[offset + i] = _position < _head.Length ? _head[_position] : (byte)0;
+                buffer[i] = _position < _head.Length ? _head[_position] : (byte)0;
                 _position++;
             }
 
-            return count;
+            return new ValueTask<int>(count);
         }
 
         public override void Flush()

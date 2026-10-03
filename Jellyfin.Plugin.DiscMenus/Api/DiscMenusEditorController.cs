@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.DiscMenus.Model;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Jellyfin.Plugin.DiscMenus.Api;
@@ -209,10 +210,18 @@ public sealed class DiscMenusEditorController : ControllerBase
     /// </summary>
     [HttpPost("Assets")]
     [RequestSizeLimit(AssetStore.MaxAudioBytes + 65536)]
-    public ActionResult UploadAsset([FromQuery] string? menu, [FromQuery] string? name)
+    public async Task<ActionResult> UploadAsset([FromQuery] string? menu, [FromQuery] string? name)
     {
-        var result = new AssetStore(DiscMenuService.AssetsPath).Save(menu, name, Request.Body);
-        return AssetOutcome(result);
+        try
+        {
+            var result = await new AssetStore(DiscMenuService.AssetsPath).SaveAsync(menu, name, Request.Body, HttpContext.RequestAborted);
+            return AssetOutcome(result);
+        }
+        catch (Microsoft.AspNetCore.Http.BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            // the request was bigger than the hard cap the web server enforces before the store ever sees it
+            return StatusCode(413, new { Error = "That file is larger than this editor accepts." });
+        }
     }
 
     /// <summary>Deletes one uploaded file of a menu. A menu that still refers to it will show a missing picture or sound until it is changed.</summary>

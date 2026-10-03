@@ -143,10 +143,10 @@ public sealed class AssetStore
     }
 
     /// <summary>
-    /// Stores an upload. <paramref name="content"/> is read to the end but never past the size limit for its kind (+1 byte to notice).
+    /// Stores an upload (read asynchronously: the web server refuses synchronous reads of a request body). <paramref name="content"/> is read to the end but never past the size limit for its kind (+1 byte to notice).
     /// Nothing is written unless the name, type, size and the file's first bytes all check out.
     /// </summary>
-    public AssetResult Save(string? folder, string? originalName, Stream content)
+    public async Task<AssetResult> SaveAsync(string? folder, string? originalName, Stream content, CancellationToken cancellationToken = default)
     {
         var dir = FolderPath(folder);
         if (dir is null)
@@ -170,7 +170,7 @@ public sealed class AssetStore
         var buffer = new MemoryStream();
         var chunk = new byte[81920];
         int read;
-        while ((read = content.Read(chunk, 0, (int)Math.Min(chunk.Length, limit + 1 - buffer.Length))) > 0)
+        while ((read = await content.ReadAsync(chunk.AsMemory(0, (int)Math.Min(chunk.Length, limit + 1 - buffer.Length)), cancellationToken).ConfigureAwait(false)) > 0)
         {
             buffer.Write(chunk, 0, read);
             if (buffer.Length > limit)
@@ -202,7 +202,7 @@ public sealed class AssetStore
             {
                 // CreateNew: never replaces a file, even if two uploads race for the same name.
                 using var stream = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                stream.Write(bytes);
+                await stream.WriteAsync(buffer.GetBuffer().AsMemory(0, (int)buffer.Length), cancellationToken).ConfigureAwait(false);
             }
             catch (IOException) when (File.Exists(target))
             {

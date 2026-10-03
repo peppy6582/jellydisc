@@ -91,7 +91,7 @@ const upload=async(w,file)=>{ const input=$(w,'discEdPicsFile'); Object.definePr
   await upload(w,{name:'My Photo.png',size:5000});
   const f=w.__fetch;
   check(f&&f.init.method==='POST'&&f.url==='https://s.example/DiscMenus/Editor/Assets?menu='+ID+'&name=My%20Photo.png','the file is posted with the menu id and its name');
-  check(f.init.headers['Content-Type']==='application/octet-stream'&&f.init.headers['X-Emby-Token']==='TOKEN123','as raw bytes, with the server token (ajax would turn it into a form)');
+  check(f.init.headers['Content-Type']==='application/octet-stream'&&f.init.headers.Authorization==='MediaBrowser Token="TOKEN123"'&&!('X-Emby-Token' in f.init.headers),'as raw bytes, with the server token (ajax would turn it into a form)');
   check(f.init.body&&f.init.body.name==='My Photo.png','the body is the file itself');
   check(T(w).includes('"image": "asset:'+ID+'/up.png"')&&$(w,'discEdPicsPanel').hidden,'the stored name the server chose is written into the menu');
   for(const [file,re] of [[{name:'x.svg',size:10},/can't be used/],[{name:'x.mp3',size:10},/needs a picture/],[{name:'x.png',size:6*1024*1024},/limit/],[{name:'x.png',size:0},/empty/]]){

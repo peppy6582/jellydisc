@@ -474,7 +474,8 @@
                 var headers = { 'Content-Type': 'application/octet-stream' };
                 var token = typeof ApiClient.accessToken === 'function' ? ApiClient.accessToken() : null;
                 if (token) {
-                    headers['X-Emby-Token'] = token;
+                    // Jellyfin 12 only reads the token from this header (X-Emby-Token and ?api_key= are refused).
+                    headers.Authorization = 'MediaBrowser Token="' + token + '"';
                 }
 
                 picsNote('Uploading ' + file.name + ' (' + P.size(file.size) + ')…');
