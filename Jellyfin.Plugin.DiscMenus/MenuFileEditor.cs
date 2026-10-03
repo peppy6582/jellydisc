@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 namespace Jellyfin.Plugin.DiscMenus;
 
 /// <summary>One problem found in a menu being edited. Line/column are set for JSON syntax errors.</summary>
-public sealed record EditorError(string Message, int? Line = null, int? Column = null);
+public sealed record EditorError(string Message, int? Line = null, int? Column = null, string? Path = null);
 
 /// <summary>A menu file in the menus folder.</summary>
 /// <param name="File">Path relative to the menus folder, with forward slashes.</param>
@@ -217,11 +217,12 @@ public sealed class MenuFileEditor
             errors.Add(new EditorError(
                 text + (string.IsNullOrEmpty(ex.Path) || ex.Path == "$" ? string.Empty : $" (at {ex.Path})"),
                 ex.LineNumber is { } line ? (int)line + 1 : null,
-                ex.BytePositionInLine is { } col ? (int)col + 1 : null));
+                ex.BytePositionInLine is { } col ? (int)col + 1 : null,
+                ErrorPaths.FromJsonPath(ex.Path)));
         }
         catch (MenuValidationException ex)
         {
-            errors.AddRange(ex.Errors.Select(e => new EditorError(e)));
+            errors.AddRange(ex.Errors.Select(e => new EditorError(e, Path: ErrorPaths.FromMessage(e))));
         }
 
         if (errors.Count == 0 && originalJson is not null)
@@ -234,14 +235,14 @@ public sealed class MenuFileEditor
                 var newId = after.RootElement.TryGetProperty("menuId", out var ni) ? ni.GetString() : null;
                 if (oldId is not null && !string.Equals(oldId, newId, StringComparison.OrdinalIgnoreCase))
                 {
-                    errors.Add(new EditorError("menuId can't be changed here: this server's bindings are tied to it."));
+                    errors.Add(new EditorError("menuId can't be changed here: this server's bindings are tied to it.", Path: "/menuId"));
                 }
 
                 if (before.RootElement.TryGetProperty("revision", out var oldRev) && oldRev.TryGetInt32(out var oldRevision)
                     && after.RootElement.TryGetProperty("revision", out var newRev) && newRev.TryGetInt32(out var newRevision)
                     && newRevision < oldRevision)
                 {
-                    errors.Add(new EditorError($"revision can't go down (it was {oldRevision})."));
+                    errors.Add(new EditorError($"revision can't go down (it was {oldRevision}).", Path: "/revision"));
                 }
             }
             catch (JsonException)

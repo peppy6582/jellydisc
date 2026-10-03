@@ -20,7 +20,7 @@ function boot(server, confirmAnswer){
   w.__preview={show(){},update(){},goTo(){},setMuted(){}};
   w.document.getElementById('discEdFrame').contentWindow.DiscMenusPreview=w.__preview;
   w.__discMenusEditorModulesPreloaded = true;
-  ['json-text', 'text-adapter'].forEach(n => w.eval(fs.readFileSync(path.join(ROOT, 'Jellyfin.Plugin.DiscMenus/Web/editor/' + n + '.js'), 'utf8')));
+  require('./editor-modules.js').forEach(n => w.eval(fs.readFileSync(path.join(ROOT, 'Jellyfin.Plugin.DiscMenus/Web/editor/' + n + '.js'), 'utf8')));
   w.eval(script); return w;
 }
 const start=async(w)=>{ $(w,'DiscMenusEditorPage').dispatchEvent(new w.CustomEvent('pageshow')); await sleep(60); const fr=$(w,'discEdFrame'); fr.contentWindow.DiscMenusPreview=w.__preview; fr.dispatchEvent(new w.Event('load')); await sleep(60); };

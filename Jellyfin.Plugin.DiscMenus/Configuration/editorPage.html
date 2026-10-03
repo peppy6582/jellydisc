@@ -14,6 +14,20 @@
                     .discEdStatus.error { color: #e55; opacity: 1; }
                     .discEdStatus.ok { color: #5c5; opacity: 1; }
                     .discEdBody { display: flex; flex-wrap: wrap; gap: 1.25em; align-items: flex-start; }
+                    .discEdSide { flex: 0 1 17em; min-width: 12em; max-height: 44em; display: flex; flex-direction: column; }
+                    .discEdSideHead { font-weight: 600; margin-bottom: 0.4em; }
+                    .discEdOutline { overflow: auto; border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; padding: 0.25em 0; }
+                    .discEdOutline .none { padding: 0.5em; opacity: 0.8; }
+                    .discEdOutline button {
+                        display: block; width: 100%; text-align: left; background: none; border: none; border-left: 3px solid transparent;
+                        color: inherit; font: inherit; font-size: 0.9em; padding: 0.25em 0.5em; cursor: pointer;
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    }
+                    .discEdOutline button.group { opacity: 0.7; font-weight: 600; cursor: default; }
+                    .discEdOutline button:hover:not(.group), .discEdOutline button:focus-visible { background: rgba(128, 128, 128, 0.2); }
+                    .discEdOutline button.current { border-left-color: #00a4dc; background: rgba(0, 164, 220, 0.18); }
+                    .discEdOutline button.bad { color: #e55; }
+                    .discEdOutline button.bad::after { content: ' \u25cf'; }
                     .discEdPane { flex: 1 1 28em; min-width: 0; }
                     #discEdText {
                         width: 100%; box-sizing: border-box; min-height: 34em; resize: vertical;
@@ -87,6 +101,10 @@
                 </div>
 
                 <div class="discEdBody">
+                    <div class="discEdSide">
+                        <div class="discEdSideHead">Parts of this menu</div>
+                        <div id="discEdOutline" class="discEdOutline" role="group" aria-label="Parts of this menu"></div>
+                    </div>
                     <div class="discEdPane">
                         <textarea id="discEdText" spellcheck="false" wrap="off" aria-label="Menu JSON" disabled></textarea>
                         <div id="discEdErrors" class="discEdErrors" role="alert"></div>
@@ -140,6 +158,7 @@
                 newPanel: $('discEdNewPanel'), newQuery: $('discEdNewQuery'), newClose: $('discEdNewClose'), newMsg: $('discEdNewMsg'), newList: $('discEdNewList'),
                 backupPanel: $('discEdBackupPanel'), backupClose: $('discEdBackupClose'), backupTitle: $('discEdBackupTitle'),
                 backupMsg: $('discEdBackupMsg'), backupList: $('discEdBackupList'),
+                outline: $('discEdOutline'),
                 file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
                 text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
                 conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
@@ -150,17 +169,17 @@
                 fanart: null, fanartShown: 0, fanartPicked: null,
                 file: null, version: null, loadedText: '', loadedRevision: null, files: [],
                 lastGood: null, shownOnce: false, seq: 0, timer: null, muted: true, loadSeq: 0,
-                titleSeq: 0, errorSource: null // who produced the errors on screen: 'preview' or 'save'
+                titleSeq: 0, selected: [], errors: [], errorSource: null // who produced the errors on screen: 'preview' or 'save'
             };
 
             // ---- script modules ---------------------------------------------------------------
             // json-text.js (in-place JSON edits by path) and text-adapter.js (one native undo step per edit) are served by the plugin.
             // They are loaded here, inside the page element, because only the page's own fragment is reliably run by the dashboard.
-            var MODULES = ['json-text', 'text-adapter'];
+            var MODULES = ['json-text', 'text-adapter', 'outline'];
             var adapter = null;
 
             function modulesReady() {
-                return !!(window.DiscMenusJsonText && window.DiscMenusTextAdapter);
+                return !!(window.DiscMenusJsonText && window.DiscMenusTextAdapter && window.DiscMenusOutline);
             }
 
             function loadModules() {
@@ -453,6 +472,69 @@
             function clearErrors() {
                 el.errors.textContent = '';
                 state.errorSource = null;
+                state.errors = [];
+                renderOutline();
+            }
+
+            // ---- outline: the parts of the menu, with problems marked --------------------
+            // Selecting a part selects its text. If the part is not in the text (a property a problem says is missing),
+            // the nearest part that is gets selected instead.
+            function selectPath(path, focus) {
+                var hit = window.DiscMenusOutline.resolve(el.text.value, path);
+                if (!hit) {
+                    return;
+                }
+
+                state.selected = path;
+                renderOutline();
+                el.text.setSelectionRange(hit.start, hit.end);
+                var lineHeight = parseFloat(window.getComputedStyle(el.text).lineHeight) || 18;
+                el.text.scrollTop = Math.max(0, (hit.line - 3) * lineHeight);
+                if (focus) {
+                    el.text.focus();
+                }
+
+                if (path[0] === 'menus' && path.length >= 2 && Array.prototype.some.call(el.menu.options, function (o) { return o.value === path[1]; }) && el.menu.value !== path[1]) {
+                    el.menu.value = path[1];
+                    el.menu.dispatchEvent(new Event('change'));
+                }
+            }
+
+            function renderOutline() {
+                if (!el.outline || !modulesReady()) {
+                    return;
+                }
+
+                el.outline.textContent = '';
+                var rows = state.file ? window.DiscMenusOutline.build(el.text.value, state.errors) : null;
+                if (!rows) {
+                    var none = document.createElement('div');
+                    none.className = 'none';
+                    none.textContent = state.file ? 'Fix the syntax problem to see the parts of this menu.' : '';
+                    el.outline.appendChild(none);
+                    return;
+                }
+
+                rows.forEach(function (r) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.style.paddingLeft = (0.5 + r.depth * 1.1) + 'em';
+                    b.textContent = r.label;
+                    b.title = r.label + (r.errors ? ' (' + r.errors + ' problem' + (r.errors === 1 ? '' : 's') + ')' : '');
+                    b.className = (r.kind === 'group' ? 'group ' : '') + (r.hasErrors ? 'bad ' : '') + (window.DiscMenusOutline.same(r.path, state.selected) ? 'current' : '');
+                    if (r.kind === 'group') {
+                        b.disabled = true;
+                    } else {
+                        b.setAttribute('aria-current', window.DiscMenusOutline.same(r.path, state.selected) ? 'true' : 'false');
+                        b.addEventListener('click', function () { selectPath(r.path, false); });
+                    }
+
+                    el.outline.appendChild(b);
+                });
+            }
+
+            function pathLabel(path) {
+                return path.map(function (p) { return typeof p === 'number' ? '[' + (p + 1) + ']' : '.' + p; }).join('').replace(/^\./, '') || 'whole menu';
             }
 
             function jumpToLine(line) {
@@ -474,6 +556,8 @@
             function showErrors(errors, source) {
                 clearErrors();
                 state.errorSource = source;
+                state.errors = errors || [];
+                renderOutline();
                 if (!errors || !errors.length) {
                     return;
                 }
@@ -491,6 +575,25 @@
                         b.textContent = 'Line ' + e.Line + (e.Column ? ', column ' + e.Column : '');
                         b.addEventListener('click', function () { jumpToLine(e.Line); });
                         li.appendChild(b);
+                        li.appendChild(document.createTextNode(': '));
+                    }
+
+                    var errPath = null;
+                    if (!e.Line && typeof e.Path === 'string' && modulesReady()) {
+                        try {
+                            errPath = window.DiscMenusOutline.pointerToPath(e.Path, JSON.parse(el.text.value));
+                        } catch (ignore) {
+                            errPath = null;
+                        }
+                    }
+
+                    if (errPath && errPath.length) {
+                        var pb = document.createElement('button');
+                        pb.type = 'button';
+                        pb.className = 'line';
+                        pb.textContent = pathLabel(errPath);
+                        pb.addEventListener('click', function () { selectPath(errPath, true); });
+                        li.appendChild(pb);
                         li.appendChild(document.createTextNode(': '));
                     }
 
@@ -586,6 +689,8 @@
                     hideConflict();
                     clearErrors();
                     fillFileList(name);
+                    state.selected = [];
+                    renderOutline();
                     setStatus('Saved', 'ok');
                     schedulePreview(0);
                 });
@@ -655,6 +760,8 @@
                         if (state.errorSource === 'preview') {
                             clearErrors();
                         }
+
+                        renderOutline();
 
                         state.lastGood = r.data;
                         fillMenuPicker(r.data.Document, el.menu.value);
@@ -981,6 +1088,7 @@
                 }
 
                 refreshDirtyStatus();
+                renderOutline();
                 schedulePreview();
             });
 

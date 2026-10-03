@@ -35,7 +35,7 @@ function boot(server,opts={}){
       return Promise.resolve(server(e,w)).then(r=>{ if(r.status>=400) return Promise.reject({status:r.status,json:()=>Promise.resolve(r.body)}); return r.body; }); }};
   w.__preview={calls:[],show(){},update(){},goTo(){},setMuted(){}};
   w.document.getElementById('discEdFrame').contentWindow.DiscMenusPreview=w.__preview;
-  if(opts.preload!==false){ w.__discMenusEditorModulesPreloaded=true; w.eval(mod('json-text')); w.eval(mod('text-adapter')); }
+  if(opts.preload!==false){ w.__discMenusEditorModulesPreloaded=true; require('./editor-modules.js').forEach(n=>w.eval(mod(n))); }
   w.eval(script); return w;
 }
 const ok=(body)=>({status:200,body}); const err=(status,body)=>({status,body});
@@ -61,9 +61,9 @@ const pick=async(w,i)=>{ cells(w)[i].click(); await sleep(60); };
   console.log('--- loading the script modules');
   let w=boot(server({'m.menu.json':MENU(3)}),{preload:false}); page(w).dispatchEvent(new w.CustomEvent('pageshow')); await sleep(40);
   const tags=[...w.document.querySelectorAll('#DiscMenusEditorPage script[src]')];
-  check(tags.length===2&&tags[0].src.startsWith('https://s.example/DiscMenus/web/editor/json-text.js?t=')&&tags[1].src.startsWith('https://s.example/DiscMenus/web/editor/text-adapter.js?t='),'the page adds a script tag per module, inside its own element, pointing at the plugin route', tags.map(t=>t.src).join());
+  check(tags.length===require('./editor-modules.js').length&&require('./editor-modules.js').every((n,i)=>tags[i].src.startsWith('https://s.example/DiscMenus/web/editor/'+n+'.js?t=')),'the page adds a script tag per module, inside its own element, pointing at the plugin route', tags.map(t=>t.src).join());
   check(calls(w,'DiscMenus/Editor/Files').length===0,'nothing else is asked of the server until the modules are there');
-  w.eval(mod('json-text')); w.eval(mod('text-adapter')); tags.forEach(t=>t.dispatchEvent(new w.Event('load'))); await sleep(120);
+  require('./editor-modules.js').forEach(n=>w.eval(mod(n))); tags.forEach(t=>t.dispatchEvent(new w.Event('load'))); await sleep(120);
   check(calls(w,'DiscMenus/Editor/Files').length===1&&$(w,'discEdText').value===MENU(3),'once they load, the editor opens the first file as usual');
   w=boot(server({'m.menu.json':MENU(3)}),{preload:false}); page(w).dispatchEvent(new w.CustomEvent('pageshow')); await sleep(40);
   [...w.document.querySelectorAll('#DiscMenusEditorPage script[src]')][1].dispatchEvent(new w.Event('error')); await sleep(60);

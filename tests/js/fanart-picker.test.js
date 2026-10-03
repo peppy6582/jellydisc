@@ -45,7 +45,7 @@ function boot(server){
   w.document.getElementById('discEdFrame').contentWindow.DiscMenusPreview=w.__preview;
   // the page loads these modules through script tags; the test supplies them directly
   w.__discMenusEditorModulesPreloaded = true;
-  ['json-text', 'text-adapter'].forEach(n => w.eval(fs.readFileSync(path.join(ROOT, 'Jellyfin.Plugin.DiscMenus/Web/editor/' + n + '.js'), 'utf8')));
+  require('./editor-modules.js').forEach(n => w.eval(fs.readFileSync(path.join(ROOT, 'Jellyfin.Plugin.DiscMenus/Web/editor/' + n + '.js'), 'utf8')));
   w.eval(script); return w;
 }
 const ok=(body)=>({status:200,body}); const err=(status,body)=>({status,body});
