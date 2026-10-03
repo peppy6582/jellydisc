@@ -23,8 +23,7 @@ Working today, on Jellyfin 12.x with the web client:
 ## Open work
 
 ### Menu Editor
-- Drag and resize buttons, layers and the paging grid directly on the preview (positions are percentages,
-  so this maps straight onto the JSON). **big**
+- Drag the paging grid's region and its cells on the preview (buttons, the title and layers can be dragged already). 
 - Undo and redo within an editing session. 
 
 ### Discovery and library

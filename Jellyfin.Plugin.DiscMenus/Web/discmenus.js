@@ -388,6 +388,11 @@
             return;
         }
 
+        if (PREVIEW && editMode) {
+            editKeyDown(e);
+            return;
+        }
+
         var dir = DIRECTION_KEYS[e.key];
         var handled = true;
         if (dir) {
@@ -685,7 +690,7 @@
     }
 
     // Decorative layers: drawn behind the buttons, never focusable or clickable.
-    function renderLayer(layer, overlay) {
+    function renderLayer(layer, overlay, index, origin) {
         var el;
         if (layer.Type === 'panel') {
             el = document.createElement('div');
@@ -712,8 +717,14 @@
             el.style.opacity = String(num(layer.Opacity, 1));
         }
 
-        el.style.pointerEvents = 'none';
+        el.style.pointerEvents = editMode ? 'auto' : 'none';
         el.setAttribute('aria-hidden', 'true');
+        if (PREVIEW) {
+            el.setAttribute('data-edit', 'layer');
+            el.setAttribute('data-index', String(index));
+            el.setAttribute('data-origin', origin);
+        }
+
         place(el, layer.Position);
         overlay.appendChild(el);
     }
@@ -1526,7 +1537,7 @@
         var positioned = shown.length > 0 && shown.every(function (e) { return !!e.Position; });
         var transition = transitionFor(layout);
         var animate = transition.style !== 'none' && transition.ms > 0 && !prefersReducedMotion() &&
-            typeof overlay.animate === 'function';
+            typeof overlay.animate === 'function' && !editMode;
 
         var bgCss = backgroundStyle(background, parentItemId);
         var previousBg = overlay.getAttribute('data-bg');
@@ -1571,7 +1582,8 @@
 
         // Layers (e.g. a banner) are shared by menus that declare the same
         // ones, so they only change - and fade - when the set actually differs.
-        var layersKey = JSON.stringify(layout.Layers || []);
+        var layersOrigin = menu.Layout && menu.Layout.Layers != null ? 'menu' : 'document';
+        var layersKey = layersOrigin + (editMode ? '!' : '') + JSON.stringify(layout.Layers || []);
         if (!existing || overlay.getAttribute('data-layers') !== layersKey) {
             var oldLayers = overlay.querySelector('.discMenusLayers');
             if (oldLayers) {
@@ -1581,8 +1593,8 @@
             var layersEl = document.createElement('div');
             layersEl.className = 'discMenusLayers';
             layersEl.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
-            (layout.Layers || []).forEach(function (layer) {
-                renderLayer(layer, layersEl);
+            (layout.Layers || []).forEach(function (layer, layerIndex) {
+                renderLayer(layer, layersEl, layerIndex, layersOrigin);
             });
             overlay.insertBefore(layersEl, overlay.querySelector('.discMenusScreen'));
             overlay.setAttribute('data-layers', layersKey);
@@ -1615,6 +1627,10 @@
                 place(title, layout.TitlePosition);
             }
 
+            if (PREVIEW) {
+                title.setAttribute('data-edit', 'title');
+            }
+
             screen.appendChild(title);
         }
 
@@ -1625,6 +1641,11 @@
 
         shown.forEach(function (entry, entryIndex) {
             var btn = buildEntryButton(entry, defaultStyle, theme, align);
+            if (PREVIEW) {
+                btn.setAttribute('data-edit', 'entry');
+                btn.setAttribute('data-index', String(entryIndex));
+            }
+
             if (positioned) {
                 place(btn, entry.Position);
             }
@@ -1637,7 +1658,7 @@
             // cursor fires mouseenter without the user moving, which would
             // steal focus from the keyboard/remote.
             btn.addEventListener('mousemove', function (e) {
-                if (e.screenX === lastMouse.x && e.screenY === lastMouse.y) {
+                if (editMode || (e.screenX === lastMouse.x && e.screenY === lastMouse.y)) {
                     return;
                 }
 
@@ -1649,6 +1670,10 @@
                 }
             });
             btn.addEventListener('click', function () {
+                if (editMode) {
+                    return; // arranging: a click selects (see the edit-mode handlers), it does not press the button
+                }
+
                 // Remember what was activated even where clicking doesn't focus a
                 // button (Safari, touch), so Back returns to it.
                 lastFocusIndex[menuKey] = entryIndex;
@@ -1683,14 +1708,27 @@
             screen.animate(TRANSITIONS[transition.style]('forward')['in'], { duration: transition.ms, easing: 'ease-out' });
         }
 
-        notifyEditor('navigate', { menu: menuKey });
+        notifyEditor('navigate', {
+            menu: menuKey,
+            positioned: positioned,
+            virtual: !!virtualMenus[menuKey],
+            flow: !!layout.Flow,
+            flowFromDocument: !!layout.Flow && !(menu.Layout && menu.Layout.Flow),
+            count: menu.Entries ? menu.Entries.length : 0,
+        });
 
         // Like a disc remembering its highlighted button: returning to a menu
         // lands on the entry you left it from (e.g. 'Special Features' after Back).
+        // In the editor's preview this is skipped while the author is typing in one of the editor's own fields (or arranging): an update caused by
+        // a form field must not pull the keyboard out of that field.
         var entryEls = screen.querySelectorAll('.discMenuEntry');
         var remembered = entryEls[lastFocusIndex[menuKey]] || entryEls[0];
-        if (remembered) {
+        if (remembered && !(PREVIEW && (editMode || editorIsBeingTypedIn()))) {
             remembered.focus();
+        }
+
+        if (PREVIEW) {
+            drawEditChrome();
         }
     }
 
@@ -1709,6 +1747,16 @@
         if (returnPoll) {
             clearInterval(returnPoll);
             returnPoll = null;
+        }
+    }
+
+    // Whether the page around the preview (the editor) has a text field, number field, text area or choice focused right now.
+    function editorIsBeingTypedIn() {
+        try {
+            var a = window.parent && window.parent !== window ? window.parent.document.activeElement : null;
+            return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+        } catch (e) {
+            return false; // not embedded, or not ours to look at
         }
     }
 
@@ -1957,6 +2005,477 @@
         renderOverlay(currentParentItemId, 'intro');
     }
 
+    // ---- Arranging (the editor's preview only) ------------------------------------------------------------------------------
+    // With edit mode on, the preview stops being a menu to use and becomes a canvas: a click selects an entry, the title or a decorative layer,
+    // dragging moves it (snapping to a 0.5% grid and to the centre lines), the arrow keys nudge it. Nothing is changed here: a finished move is
+    // reported to the editor ("move" with percentages), which edits the menu text and sends the menu back, so the text stays the one copy.
+    var editMode = false;
+    var editSel = null; // { kind: 'entry' | 'title' | 'layer', menu, index, origin }
+    var drag = null;
+    var EDIT_GRID = 0.5;
+    var EDIT_MIN_MOVE = 3; // pixels before a press becomes a drag
+
+    function screenSize() {
+        return { w: window.innerWidth || 1920, h: window.innerHeight || 1080 };
+    }
+
+    function round(v, grid) {
+        return Math.round(v / grid) * grid;
+    }
+
+    // Snap a percentage to the grid and, close to 50, to the centre line. Returns { value, centred }. free = no snapping (Alt held).
+    function snapPercent(v, free) {
+        var clamped = Math.max(0, Math.min(100, v));
+        if (free) {
+            return { value: Math.round(clamped * 10) / 10, centred: false };
+        }
+
+        if (Math.abs(clamped - 50) < 0.75) {
+            return { value: 50, centred: true };
+        }
+
+        return { value: Math.round(round(clamped, EDIT_GRID) * 10) / 10, centred: false };
+    }
+
+    function currentMenuKey() {
+        return menuStack[menuStack.length - 1];
+    }
+
+    function selectorFor(sel) {
+        if (!sel) {
+            return null;
+        }
+
+        return sel.kind === 'title' ? '[data-edit="title"]'
+            : '[data-edit="' + sel.kind + '"][data-index="' + sel.index + '"]' + (sel.kind === 'layer' ? '[data-origin="' + sel.origin + '"]' : '');
+    }
+
+    function selectedElement() {
+        var overlay = document.getElementById(OVERLAY_ID);
+        var q = selectorFor(editSel);
+        if (!overlay || !q || (editSel && editSel.menu !== currentMenuKey())) {
+            return null;
+        }
+
+        return overlay.querySelector(q);
+    }
+
+    // The position the menu gives the thing now, or null when it has none (an entry in a column, a title that just sits there).
+    function positionOf(sel) {
+        var menu = menuDoc && menuDoc.Menus[sel.menu];
+        if (!menu) {
+            return null;
+        }
+
+        if (sel.kind === 'entry') {
+            var e = menu.Entries[sel.index];
+            return e && e.Position ? e.Position : null;
+        }
+
+        var layout = effectiveLayout(menu);
+        if (sel.kind === 'title') {
+            return layout.TitlePosition || null;
+        }
+
+        var layer = (layout.Layers || [])[sel.index];
+        return layer && layer.Position ? layer.Position : null;
+    }
+
+    function ensureChrome() {
+        var overlay = document.getElementById(OVERLAY_ID);
+        if (!overlay) {
+            return null;
+        }
+
+        var chrome = overlay.querySelector('.discMenusEditChrome');
+        if (!chrome) {
+            chrome = document.createElement('div');
+            chrome.className = 'discMenusEditChrome';
+            chrome.setAttribute('aria-hidden', 'true');
+            chrome.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:6;';
+            chrome.innerHTML =
+                '<div class="discMenusGuideV" style="position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ff4fa3;display:none"></div>' +
+                '<div class="discMenusGuideH" style="position:absolute;left:0;right:0;top:50%;height:0;border-top:1px dashed #ff4fa3;display:none"></div>' +
+                '<div class="discMenusSelBox" style="position:absolute;display:none;box-sizing:border-box;border:2px solid #00a4dc;' +
+                'background:rgba(0,164,220,0.12);pointer-events:none"></div>' +
+                '<div class="discMenusHandle" data-handle="e" style="position:absolute;display:none;width:14px;height:14px;margin:-7px 0 0 -7px;' +
+                'background:#00a4dc;border:2px solid #fff;border-radius:50%;pointer-events:auto;cursor:ew-resize"></div>' +
+                '<div class="discMenusHandle" data-handle="s" style="position:absolute;display:none;width:14px;height:14px;margin:-7px 0 0 -7px;' +
+                'background:#00a4dc;border:2px solid #fff;border-radius:50%;pointer-events:auto;cursor:ns-resize"></div>' +
+                '<div class="discMenusHandle" data-handle="se" style="position:absolute;display:none;width:14px;height:14px;margin:-7px 0 0 -7px;' +
+                'background:#00a4dc;border:2px solid #fff;border-radius:50%;pointer-events:auto;cursor:nwse-resize"></div>';
+            overlay.appendChild(chrome);
+        }
+
+        return chrome;
+    }
+
+    function drawEditChrome() {
+        var chrome = ensureChrome();
+        if (!chrome) {
+            return;
+        }
+
+        var box = chrome.querySelector('.discMenusSelBox');
+        var handles = chrome.querySelectorAll('.discMenusHandle');
+        Array.prototype.forEach.call(handles, function (h) { h.style.display = 'none'; });
+        var el = editMode ? selectedElement() : null;
+        if (!el) {
+            box.style.display = 'none';
+            return;
+        }
+
+        var r = el.getBoundingClientRect();
+        box.style.display = 'block';
+        box.style.left = r.left + 'px';
+        box.style.top = r.top + 'px';
+        box.style.width = r.width + 'px';
+        box.style.height = r.height + 'px';
+
+        // Resize handles only where the thing has a size of its own (a decorative layer, or a button given a width or height).
+        var pos = positionOf(editSel);
+        if (!pos || (editSel.kind === 'entry' && pos.W == null && pos.H == null) || editSel.kind === 'title') {
+            return;
+        }
+
+        var shift = ANCHOR_SHIFT[pos.Anchor || 'top-left'] || ANCHOR_SHIFT['top-left'];
+        var canE = shift[0] > -100;
+        var canS = shift[1] > -100;
+        var put = function (name, x, y, show) {
+            var h = chrome.querySelector('[data-handle="' + name + '"]');
+            h.style.left = x + 'px';
+            h.style.top = y + 'px';
+            h.style.display = show ? 'block' : 'none';
+        };
+        put('e', r.right, r.top + r.height / 2, canE);
+        put('s', r.left + r.width / 2, r.bottom, canS);
+        put('se', r.right, r.bottom, canE && canS);
+    }
+
+    function showGuides(centredX, centredY) {
+        var chrome = ensureChrome();
+        if (!chrome) {
+            return;
+        }
+
+        chrome.querySelector('.discMenusGuideV').style.display = centredX ? 'block' : 'none';
+        chrome.querySelector('.discMenusGuideH').style.display = centredY ? 'block' : 'none';
+    }
+
+    function setSelection(sel, notify) {
+        editSel = sel;
+        drawEditChrome();
+        if (notify) {
+            notifyEditor('select', sel ? { kind: sel.kind, menu: sel.menu, index: sel.index, origin: sel.origin } : { kind: null });
+        }
+    }
+
+    // What is under a point, topmost first, ignoring the chrome: an entry, the title, or a layer.
+    function editTargetAt(x, y) {
+        var stack = typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, y) : [];
+        for (var i = 0; i < stack.length; i++) {
+            var hit = stack[i].closest ? stack[i].closest('[data-edit]') : null;
+            if (hit) {
+                return hit;
+            }
+        }
+
+        return null;
+    }
+
+    function selectionOf(el) {
+        var kind = el.getAttribute('data-edit');
+        return {
+            kind: kind,
+            menu: currentMenuKey(),
+            index: kind === 'title' ? 0 : Number(el.getAttribute('data-index')),
+            origin: kind === 'layer' ? el.getAttribute('data-origin') : null,
+        };
+    }
+
+    // Where the thing is, as the numbers the menu would hold: its own position if it has one, else (title, entry in a column) its top-left corner.
+    function placementOf(sel, el) {
+        var pos = positionOf(sel);
+        if (pos) {
+            return { X: pos.X, Y: pos.Y, Anchor: pos.Anchor || 'top-left', W: pos.W, H: pos.H, placed: true };
+        }
+
+        var r = el.getBoundingClientRect();
+        var size = screenSize();
+        return { X: r.left / size.w * 100, Y: r.top / size.h * 100, Anchor: 'top-left', W: null, H: null, placed: false };
+    }
+
+    function canMove(sel) {
+        if (!sel || (menuDoc && !menuDoc.Menus[sel.menu])) {
+            return false;
+        }
+
+        if (virtualMenus[sel.menu]) {
+            return false;
+        }
+
+        if (sel.kind === 'entry') {
+            return !!positionOf(sel);
+        }
+
+        return true;
+    }
+
+    // Remember a finished gesture in the preview's own copy of the menu straight away. The editor sends the edited menu back a moment later, but
+    // until then the next gesture (a second arrow key, a drag that follows) must start from where the thing is now, not from where it was.
+    function applyLocal(sel, patch) {
+        var menu = menuDoc && menuDoc.Menus[sel.menu];
+        if (!menu) {
+            return;
+        }
+
+        var target;
+        if (sel.kind === 'entry') {
+            target = menu.Entries[sel.index];
+        } else if (sel.kind === 'layer') {
+            var layers = (sel.origin === 'menu' ? menu.Layout : menuDoc.Layout) || {};
+            target = (layers.Layers || [])[sel.index];
+        } else {
+            menu.Layout = menu.Layout || {};
+            target = menu.Layout;
+        }
+
+        if (!target) {
+            return;
+        }
+
+        if (sel.kind === 'title') {
+            var own = menu.Layout.TitlePosition;
+            var base = own || effectiveLayout(menu).TitlePosition || {};
+            target.TitlePosition = Object.assign({}, base, patch);
+        } else {
+            target.Position = Object.assign({}, target.Position || {}, patch);
+        }
+    }
+
+    function reportMove(sel, placement, x, y) {
+        applyLocal(sel, Object.assign({ X: x, Y: y }, placement.placed ? {} : { Anchor: 'top-left' }));
+        var data = { kind: sel.kind, menu: sel.menu, index: sel.index, origin: sel.origin, x: x, y: y };
+        if (!placement.placed) {
+            data.anchor = 'top-left'; // a new placement: the editor writes the whole position
+        }
+
+        notifyEditor('move', data);
+    }
+
+    // A press is handled by us and its default (which would focus the frame) is cancelled, so ask for the keyboard explicitly: the arrow keys
+    // that nudge the selection only arrive here if the preview has focus. Skipped while the author is typing in one of the editor's own fields.
+    function takeKeyboard() {
+        if (editorIsBeingTypedIn()) {
+            return;
+        }
+
+        try {
+            window.focus();
+            if (document.body && !document.hasFocus()) {
+                document.body.tabIndex = -1;
+                document.body.focus();
+            }
+        } catch (e) {
+            // not focusable here
+        }
+    }
+
+    function onEditPointerDown(e) {
+        if (!editMode || (e.button != null && e.button !== 0)) {
+            return;
+        }
+
+        var overlay = document.getElementById(OVERLAY_ID);
+        if (!overlay || !overlay.contains(e.target)) {
+            return;
+        }
+
+        var handle = e.target.closest ? e.target.closest('[data-handle]') : null;
+        if (handle && editSel) {
+            var hel = selectedElement();
+            var hpos = positionOf(editSel);
+            if (hel && hpos) {
+                drag = { mode: 'resize', handle: handle.getAttribute('data-handle'), sel: editSel, el: hel, pos: hpos, rect: hel.getBoundingClientRect(), startX: e.clientX, startY: e.clientY, moved: false };
+                takeKeyboard();
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return;
+            }
+        }
+
+        var el = editTargetAt(e.clientX, e.clientY);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!el) {
+            setSelection(null, true);
+            return;
+        }
+
+        var sel = selectionOf(el);
+        setSelection(sel, true);
+        takeKeyboard();
+        if (canMove(sel)) {
+            drag = { mode: 'move', sel: sel, el: el, start: placementOf(sel, el), startX: e.clientX, startY: e.clientY, moved: false, x: null, y: null };
+        }
+    }
+
+    function onEditPointerMove(e) {
+        if (!editMode || !drag) {
+            return;
+        }
+
+        var dx = e.clientX - drag.startX;
+        var dy = e.clientY - drag.startY;
+        if (!drag.moved && Math.abs(dx) < EDIT_MIN_MOVE && Math.abs(dy) < EDIT_MIN_MOVE) {
+            return;
+        }
+
+        drag.moved = true;
+        var size = screenSize();
+        e.preventDefault();
+        if (drag.mode === 'resize') {
+            var p = drag.pos;
+            var a = ANCHOR_SHIFT[p.Anchor || 'top-left'] || ANCHOR_SHIFT['top-left'];
+            var fx = -a[0] / 100; // 0 = anchored on the left edge, 0.5 centre, 1 right edge
+            var fy = -a[1] / 100;
+            var rect = drag.rect; // measured when the press began: the element is redrawn as it is dragged
+            var next = { X: p.X, Y: p.Y, Anchor: p.Anchor, W: p.W, H: p.H };
+            if ((drag.handle === 'e' || drag.handle === 'se') && fx < 1) {
+                var rightPct = (rect.right + dx) / size.w * 100;
+                next.W = Math.max(1, snapPercent((rightPct - p.X) / (1 - fx), e.altKey).value);
+            }
+
+            if ((drag.handle === 's' || drag.handle === 'se') && fy < 1) {
+                var bottomPct = (rect.bottom + dy) / size.h * 100;
+                next.H = Math.max(1, snapPercent((bottomPct - p.Y) / (1 - fy), e.altKey).value);
+            }
+
+            drag.next = next;
+            place(drag.el, next);
+            drawEditChrome();
+            return;
+        }
+
+        var sx = snapPercent(drag.start.X + dx / size.w * 100, e.altKey);
+        var sy = snapPercent(drag.start.Y + dy / size.h * 100, e.altKey);
+        drag.x = sx.value;
+        drag.y = sy.value;
+        if (drag.sel.kind === 'title' && !drag.start.placed) {
+            drag.el.style.margin = '0';
+        }
+
+        place(drag.el, { X: sx.value, Y: sy.value, Anchor: drag.start.Anchor, W: drag.start.W, H: drag.start.H });
+        showGuides(sx.centred, sy.centred);
+        drawEditChrome();
+    }
+
+    function onEditPointerUp() {
+        if (!editMode || !drag) {
+            return;
+        }
+
+        var finished = drag;
+        drag = null;
+        showGuides(false, false);
+        if (!finished.moved) {
+            return;
+        }
+
+        if (finished.mode === 'resize') {
+            if (finished.next) {
+                var local = {};
+                if (finished.next.W != null) { local.W = finished.next.W; }
+                if (finished.next.H != null) { local.H = finished.next.H; }
+                applyLocal(finished.sel, local);
+                notifyEditor('resize', { kind: finished.sel.kind, menu: finished.sel.menu, index: finished.sel.index, origin: finished.sel.origin, w: finished.next.W, h: finished.next.H });
+            }
+
+            return;
+        }
+
+        if (finished.x != null) {
+            reportMove(finished.sel, finished.start, finished.x, finished.y);
+        }
+    }
+
+    function onEditClick(e) {
+        var overlay = document.getElementById(OVERLAY_ID);
+        if (editMode && overlay && overlay.contains(e.target)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    }
+
+    // Arrow keys nudge the selection (0.5%, Shift 5%); Escape lets go. Every other key is left alone: nothing in a preview may navigate.
+    function editKeyDown(e) {
+        var step = e.shiftKey ? 5 : EDIT_GRID;
+        var dir = DIRECTION_KEYS[e.key];
+        if (e.key === 'Escape') {
+            setSelection(null, true);
+        } else if (dir && editSel) {
+            var el = selectedElement();
+            if (el && canMove(editSel)) {
+                var start = placementOf(editSel, el);
+                var x = snapPercent(start.X + dir[0] * step, true).value;
+                var y = snapPercent(start.Y + dir[1] * step, true).value;
+                reportMove(editSel, start, x, y);
+            }
+        } else {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    }
+
+    function previewSetEditMode(on) {
+        on = !!on;
+        if (on === editMode) {
+            return;
+        }
+
+        editMode = on;
+        var types = ['pointerdown', 'pointermove', 'pointerup', 'click'];
+        var handlers = [onEditPointerDown, onEditPointerMove, onEditPointerUp, onEditClick];
+        types.forEach(function (t, i) {
+            if (on) {
+                document.addEventListener(t, handlers[i], true);
+            } else {
+                document.removeEventListener(t, handlers[i], true);
+            }
+        });
+        if (!on) {
+            drag = null;
+            editSel = null;
+        }
+
+        if (menuDoc && document.getElementById(OVERLAY_ID)) {
+            renderOverlay(currentParentItemId); // layers and entries are drawn differently while arranging
+        }
+    }
+
+    function previewSetSelection(sel) {
+        editSel = sel && sel.kind ? sel : null;
+        drawEditChrome();
+    }
+
+    // Where the buttons of the current page are now, for "place the buttons freely" on a page that lays them out itself.
+    function previewSnapshot() {
+        var overlay = document.getElementById(OVERLAY_ID);
+        var size = screenSize();
+        var out = [];
+        if (!overlay) {
+            return out;
+        }
+
+        Array.prototype.forEach.call(overlay.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]'), function (el) {
+            var r = el.getBoundingClientRect();
+            out.push({ index: Number(el.getAttribute('data-index')), x: r.left / size.w * 100, y: r.top / size.h * 100 });
+        });
+        return out;
+    }
+
     // Swap in an edited menu without losing where the author is: same menu, same page, no replay of
     // the intro. If the menu being viewed no longer exists, fall back to the root.
     function previewUpdate(doc, parentItemId) {
@@ -2004,7 +2523,10 @@
     }
 
     if (PREVIEW) {
-        window.DiscMenusPreview = { show: previewShow, update: previewUpdate, goTo: previewGoTo, setMuted: previewSetMuted };
+        window.DiscMenusPreview = {
+            show: previewShow, update: previewUpdate, goTo: previewGoTo, setMuted: previewSetMuted,
+            setEditMode: previewSetEditMode, setSelection: previewSetSelection, snapshot: previewSnapshot, snapPercent: snapPercent,
+        };
         notifyEditor('ready');
     } else {
         window.addEventListener('hashchange', checkForMenu);

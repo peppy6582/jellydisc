@@ -270,6 +270,14 @@ the live preview update beside it.
   **Delete** removes a menu you made (a backup is kept); menus installed from the catalogue are removed on
   the Menu Catalogue page instead. **Backups…** lists the saved earlier versions; **Restore** puts one back
   as a new revision with the current `menuId` (a revision never goes down) and backs up what it replaces.
+- **Arranging on the preview.** **Arrange** turns the preview into a canvas: click a button, the title or a decorative layer to select
+  it (the outline and form follow), drag it to move it, drag a round handle to resize a layer or a button you gave a width or height.
+  Positions are percentages of the screen, snapped to half a percent and to the centre lines (hold **Alt** for no snapping); the arrow
+  keys nudge the selection by half a percent (**Shift** for five); **Esc** lets go. A move is one edit of the text, so one **Undo**
+  takes it back. A page that lays its buttons out itself can't have them dragged: **Let me place the buttons freely** gives each
+  button the place it has now (and removes that page's own automatic grid, because a grid and positions can't be mixed). Moving
+  a title that takes its place from the whole menu's layout gives that page its own copy instead of moving every page's title.
+  The generated scene-selection screen can't be arranged. Arranging is hidden on narrow windows.
 - **Pictures, sounds and TMDB backdrops.** A picture or sound field has a **Choose or upload…** button: it lists the files uploaded for
   this menu (kept in `assets/<menuId>/` on the server), lets you upload another and uses the one you pick as an `asset:` reference. Pictures
   are png, jpg or webp up to 5 MB; sounds are mp3, ogg, opus, m4a or wav up to 25 MB; at most 200 files and 100 MB per menu. The server
@@ -287,7 +295,7 @@ the live preview update beside it.
   `POST /DiscMenus/Editor/Preview?file=` (the body is the menu text; returns exactly what the player
   endpoint would serve for it).
 
-Not in the editor yet: dragging buttons into place. See the [roadmap](ROADMAP.md).
+Not in the editor yet: a guided way to build a grid or banner, and arranging scene-selection screens. See the [roadmap](ROADMAP.md).
 
 ## Checking a menu from the command line
 

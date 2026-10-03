@@ -62,6 +62,9 @@
                     .discEdOutline button.current { border-left-color: #00a4dc; background: rgba(0, 164, 220, 0.18); }
                     .discEdOutline button.bad { color: #e55; }
                     .discEdOutline button.bad::after { content: ' \u25cf'; }
+                    .discEdArrangeNote { margin: 0.5em 0; padding: 0.5em 0.75em; border-left: 3px solid #00a4dc; background: rgba(0, 164, 220, 0.1); font-size: 0.9em; }
+                    .discEdArrangeNote button { margin-left: 0.5em; }
+                    @media (max-width: 900px) { #discEdArrange, #discEdArrangeNote { display: none !important; } }
                     .discEdPane { flex: 1 1 28em; min-width: 0; }
                     #discEdText {
                         width: 100%; box-sizing: border-box; min-height: 34em; resize: vertical;
@@ -179,10 +182,15 @@
                         <div class="discEdPreviewBar">
                             <div class="grow"><select id="discEdMenu" is="emby-select" label="Show menu"></select></div>
                             <button id="discEdFanartOpen" is="emby-button" type="button" class="raised"><span>Fanart…</span></button>
+                            <button id="discEdArrange" is="emby-button" type="button" class="raised" aria-pressed="false" title="Drag buttons, the title and decorations on the preview"><span>Arrange</span></button>
                             <button id="discEdMute" is="emby-button" type="button" class="raised"><span>Sound off</span></button>
                         </div>
                         <div id="discEdStage"><iframe id="discEdFrame" title="Live preview of the menu"></iframe></div>
                         <div id="discEdNote" class="fieldDescription"></div>
+                        <div id="discEdArrangeNote" class="discEdArrangeNote" hidden>
+                            <span id="discEdArrangeText"></span>
+                            <button id="discEdFreePlace" is="emby-button" type="button" class="raised" hidden><span>Let me place the buttons freely</span></button>
+                        </div>
                         <div id="discEdFanart" class="discEdFanart" hidden>
                             <div class="discEdFanartHead">
                                 <div class="grow"><select id="discEdFanartCat" is="emby-select" label="Pictures"></select></div>
@@ -221,7 +229,7 @@
                 picsFile: $('discEdPicsFile'), picsRules: $('discEdPicsRules'), picsMsg: $('discEdPicsMsg'), picsList: $('discEdPicsList'),
                 backupPanel: $('discEdBackupPanel'), backupClose: $('discEdBackupClose'), backupTitle: $('discEdBackupTitle'),
                 backupMsg: $('discEdBackupMsg'), backupList: $('discEdBackupList'),
-                outline: $('discEdOutline'), toggleText: $('discEdToggleText'), undo: $('discEdUndo'), redo: $('discEdRedo'), textPane: $('discEdTextPane'), inspector: $('discEdInspector'),
+                outline: $('discEdOutline'), arrange: $('discEdArrange'), arrangeNote: $('discEdArrangeNote'), arrangeText: $('discEdArrangeText'), freePlace: $('discEdFreePlace'), toggleText: $('discEdToggleText'), undo: $('discEdUndo'), redo: $('discEdRedo'), textPane: $('discEdTextPane'), inspector: $('discEdInspector'),
                 file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
                 text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
                 conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
@@ -232,7 +240,7 @@
                 fanart: null, fanartShown: 0, fanartPicked: null,
                 file: null, version: null, loadedText: '', loadedRevision: null, files: [],
                 lastGood: null, shownOnce: false, seq: 0, timer: null, muted: true, loadSeq: 0,
-                titleSeq: 0, pick: null, selected: [], errors: [], errorSource: null // who produced the errors on screen: 'preview' or 'save'
+                titleSeq: 0, arrangeOn: false, pagePlacement: null, pick: null, selected: [], errors: [], errorSource: null // who produced the errors on screen: 'preview' or 'save'
             };
 
             // ---- script modules ---------------------------------------------------------------
@@ -773,6 +781,7 @@
                 renderOutline();
                 renderForm();
                 el.text.setSelectionRange(hit.start, hit.end);
+                syncPreviewSelection(path);
                 var lineHeight = parseFloat(window.getComputedStyle(el.text).lineHeight) || 18;
                 el.text.scrollTop = Math.max(0, (hit.line - 3) * lineHeight);
                 if (focus) {
@@ -1115,6 +1124,218 @@
                 } else {
                     win.DiscMenusPreview.update(doc, parent);
                 }
+
+                applyArrangeMode();
+            }
+
+            // ---- arranging on the preview (drag, nudge, resize) --------------------------------------
+            // The preview reports what the author did ("select", "move", "resize") in percentages; each becomes one edit of the text, so it is
+            // one undo step and the forms and outline follow.
+            function previewApi() {
+                var win = el.frame.contentWindow;
+                return win && win.DiscMenusPreview && typeof win.DiscMenusPreview.setEditMode === 'function' ? win.DiscMenusPreview : null;
+            }
+
+            function describeArrange() {
+                var p = state.pagePlacement;
+                el.freePlace.hidden = true;
+                if (!state.arrangeOn) {
+                    el.arrangeNote.hidden = true;
+                    return;
+                }
+
+                el.arrangeNote.hidden = false;
+                var base = 'Drag buttons, the title and decorations; drag a round handle to resize. Arrow keys nudge (Shift for more); Alt turns snapping off.';
+                if (p && p.virtual) {
+                    el.arrangeText.textContent = 'This screen is generated from the film\'s chapters, so there is nothing to arrange here.';
+                } else if (p && !p.positioned && p.count > 0) {
+                    el.arrangeText.textContent = p.flow
+                        ? 'This page lays its buttons out in an automatic grid, so they can\'t be dragged. You can still move the title and decorations.'
+                        : 'This page lays its buttons out automatically, so they can\'t be dragged yet. You can still move the title and decorations.';
+                    el.freePlace.hidden = !!(p.flow && p.flowFromDocument);
+                } else {
+                    el.arrangeText.textContent = base;
+                }
+            }
+
+            function applyArrangeMode() {
+                var api = previewApi();
+                if (api) {
+                    api.setEditMode(state.arrangeOn);
+                }
+
+                el.arrange.setAttribute('aria-pressed', state.arrangeOn ? 'true' : 'false');
+                el.arrange.querySelector('span').textContent = state.arrangeOn ? 'Done arranging' : 'Arrange';
+                describeArrange();
+            }
+
+            // The path in the menu text of what the preview selected, and back.
+            function pathOfSelection(m) {
+                if (m.kind === 'entry') {
+                    return ['menus', m.menu, 'entries', m.index];
+                }
+
+                if (m.kind === 'layer') {
+                    return m.origin === 'document' ? ['layout', 'layers', m.index] : ['menus', m.menu, 'layout', 'layers', m.index];
+                }
+
+                if (m.kind === 'title') {
+                    return ['menus', m.menu];
+                }
+
+                return null;
+            }
+
+            function selectionOfPath(path, menuKey) {
+                if (path.length === 4 && path[0] === 'menus' && path[2] === 'entries') {
+                    return { kind: 'entry', menu: path[1], index: path[3] };
+                }
+
+                if (path.length === 5 && path[0] === 'menus' && path[2] === 'layout' && path[3] === 'layers') {
+                    return { kind: 'layer', menu: path[1], index: path[4], origin: 'menu' };
+                }
+
+                if (path.length === 3 && path[0] === 'layout' && path[1] === 'layers') {
+                    return { kind: 'layer', menu: menuKey, index: path[2], origin: 'document' };
+                }
+
+                return null;
+            }
+
+            function syncPreviewSelection(path) {
+                var api = previewApi();
+                if (!api || !state.arrangeOn) {
+                    return;
+                }
+
+                api.setSelection(selectionOfPath(path, el.menu.value));
+            }
+
+            function roundTo(v, step) {
+                return Math.round(v / step) * step;
+            }
+
+            function numberText(v) {
+                return String(Math.round(v * 10) / 10);
+            }
+
+            // Writes x and y (and, for something that had no position, its anchor) into the menu text as one edit.
+            function applyMove(m) {
+                var JT = window.DiscMenusJsonText;
+                var text = el.text.value;
+                var d;
+                try {
+                    d = JSON.parse(text);
+                } catch (ignore) {
+                    setStatus('Fix the syntax problem in the text before arranging.', 'error');
+                    return;
+                }
+
+                var at = function (path) {
+                    return path.reduce(function (n, k) { return n && typeof n === 'object' ? n[k] : undefined; }, d);
+                };
+                try {
+                    var out = text;
+                    var base;
+                    if (m.kind === 'entry') {
+                        base = ['menus', m.menu, 'entries', m.index, 'position'];
+                    } else if (m.kind === 'layer') {
+                        base = (m.origin === 'document' ? [] : ['menus', m.menu]).concat(['layout', 'layers', m.index, 'position']);
+                    } else {
+                        base = ['menus', m.menu, 'layout', 'titlePosition'];
+                    }
+
+                    var existing = at(base);
+                    if (existing && typeof existing === 'object') {
+                        out = JT.set(out, base.concat(['x']), numberText(m.x));
+                        out = JT.set(out, base.concat(['y']), numberText(m.y), { after: ['x'] });
+                    } else {
+                        // a title that just sat there, or one that took its position from the whole menu's layout: this page gets its own
+                        var inherited = m.kind === 'title' ? at(['layout', 'titlePosition']) : null;
+                        var created = { x: Math.round(m.x * 10) / 10, y: Math.round(m.y * 10) / 10 };
+                        if (inherited && typeof inherited === 'object') {
+                            ['w', 'h', 'anchor'].forEach(function (k) { if (inherited[k] !== undefined) { created[k] = inherited[k]; } });
+                        } else {
+                            created.anchor = m.anchor || 'top-left';
+                        }
+
+                        out = JT.set(out, base, JSON.stringify(created), { after: m.kind === 'title' ? ['flow', 'buttonStyle', 'hideTitle'] : ['label'] });
+                    }
+
+                    if (out !== text) {
+                        applyText(out);
+                        schedulePreview(60); // arranging is live: do not wait the usual half second
+                    }
+                } catch (err) {
+                    setStatus(err && err.code === 'duplicate' ? 'This menu repeats a key, so it can\'t be edited here.' : 'That move could not be written: ' + (err && err.message), 'error');
+                }
+            }
+
+            function applyResize(m) {
+                var JT = window.DiscMenusJsonText;
+                var text = el.text.value;
+                try {
+                    var base = m.kind === 'entry' ? ['menus', m.menu, 'entries', m.index, 'position']
+                        : (m.origin === 'document' ? [] : ['menus', m.menu]).concat(['layout', 'layers', m.index, 'position']);
+                    var out = text;
+                    if (typeof m.w === 'number') {
+                        out = JT.set(out, base.concat(['w']), numberText(m.w), { after: ['y', 'x'] });
+                    }
+
+                    if (typeof m.h === 'number') {
+                        out = JT.set(out, base.concat(['h']), numberText(m.h), { after: ['w', 'y', 'x'] });
+                    }
+
+                    if (out !== text) {
+                        applyText(out);
+                        schedulePreview(60);
+                    }
+                } catch (err) {
+                    setStatus('That resize could not be written: ' + (err && err.message), 'error');
+                }
+            }
+
+            // "Let me place the buttons freely": the page lays its buttons out itself, so give every button the position it has right now.
+            function placeFreely() {
+                var api = previewApi();
+                var p = state.pagePlacement;
+                var JT = window.DiscMenusJsonText;
+                if (!api || !p || p.virtual || p.positioned) {
+                    return;
+                }
+
+                var text = el.text.value;
+                try {
+                    var d = JSON.parse(text);
+                    var menu = d.menus && d.menus[p.menu];
+                    var snap = api.snapshot();
+                    if (!menu || !Array.isArray(menu.entries) || snap.length !== menu.entries.length) {
+                        setStatus('The buttons could not be measured on this page.', 'error');
+                        return;
+                    }
+
+                    var out = text;
+                    if (p.flow) {
+                        if (p.flowFromDocument || !(menu.layout && menu.layout.flow)) {
+                            setStatus('This page uses the whole menu\'s automatic grid, so it can\'t be changed from here.', 'error');
+                            return;
+                        }
+
+                        out = JT.remove(out, ['menus', p.menu, 'layout', 'flow']);
+                    }
+
+                    snap.forEach(function (s2) {
+                        var pos = { x: Math.min(100, Math.max(0, roundTo(s2.x, 0.5))), y: Math.min(100, Math.max(0, roundTo(s2.y, 0.5))) };
+                        out = JT.set(out, ['menus', p.menu, 'entries', s2.index, 'position'], JSON.stringify(pos),
+                            { after: ['imageFocus', 'image', 'style', 'perPage', 'startChapter', 'extras', 'extra', 'menu', 'label', 'action'] });
+                    });
+                    if (out !== text) {
+                        applyText(out);
+                        setStatus('Every button now has a place of its own. Drag them where you like.', 'ok');
+                    }
+                } catch (err) {
+                    setStatus('The buttons could not be placed: ' + (err && err.message), 'error');
+                }
             }
 
             function schedulePreview(delay) {
@@ -1175,6 +1396,22 @@
                 } else if (m.type === 'navigate') {
                     if (m.menu && Array.prototype.some.call(el.menu.options, function (o) { return o.value === m.menu; })) {
                         el.menu.value = m.menu;
+                    }
+
+                    state.pagePlacement = { menu: m.menu, positioned: !!m.positioned, virtual: !!m.virtual, flow: !!m.flow, flowFromDocument: !!m.flowFromDocument, count: m.count || 0 };
+                    describeArrange();
+                } else if (m.type === 'select') {
+                    var picked = pathOfSelection(m);
+                    if (picked && state.arrangeOn) {
+                        selectPath(picked, false);
+                    }
+                } else if (m.type === 'move') {
+                    if (state.arrangeOn) {
+                        applyMove(m);
+                    }
+                } else if (m.type === 'resize') {
+                    if (state.arrangeOn) {
+                        applyResize(m);
                     }
                 } else if (m.type === 'play') {
                     el.note.textContent = 'In a real menu this would start playing' +
@@ -1486,6 +1723,11 @@
             });
 
             el.save.addEventListener('click', function () { save(); });
+            el.arrange.addEventListener('click', function () {
+                state.arrangeOn = !state.arrangeOn;
+                applyArrangeMode();
+            });
+            el.freePlace.addEventListener('click', placeFreely);
             // With the text hidden there is no text box to press Ctrl+Z in, so undo is a button and a key on the page. Typing inside a field keeps the
             // browser's own undo for that field.
             el.undo.addEventListener('click', function () { if (adapter) { adapter.undo(); } });
