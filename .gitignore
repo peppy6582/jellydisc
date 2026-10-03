@@ -17,3 +17,4 @@ __pycache__/
 node_modules/
 .deploy-tmp/
 tests/browser/shots/
+tests/browser/tests/
