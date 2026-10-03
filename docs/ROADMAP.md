@@ -28,8 +28,6 @@ Working today, on Jellyfin 12.x with the web client:
 - Drag and resize buttons, layers and the paging grid directly on the preview (positions are percentages,
   so this maps straight onto the JSON). **big**
 - Upload artwork and audio into the assets folder (type and size limits, path safety). **big**
-- Create a menu from a title in the UI (the draft API exists). 
-- A history view that lists and restores the automatic backups. 
 - Undo and redo within an editing session. 
 
 ### Discovery and library

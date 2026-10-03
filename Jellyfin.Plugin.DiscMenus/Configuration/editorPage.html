@@ -26,6 +26,9 @@
                     .discEdErrors li { margin: 0.2em 0; }
                     .discEdErrors .title { color: #e55; font-weight: 600; }
                     .discEdErrors button.line { background: none; border: none; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
+                    .discEdPanel { margin: 0 0 1em; padding: 0.75em; border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; }
+                    .discEdRow { display: flex; flex-wrap: wrap; gap: 0.6em; align-items: center; padding: 0.35em 0; border-top: 1px solid rgba(128, 128, 128, 0.25); }
+                    .discEdRow .grow { flex: 1 1 14em; }
                     .discEdConflict { margin: 0.5em 0; padding: 0.75em; border: 1px solid #e90; border-radius: 4px; }
                     .discEdPreviewBar { display: flex; flex-wrap: wrap; gap: 0.75em; align-items: center; margin-bottom: 0.5em; }
                     .discEdPreviewBar .grow { flex: 1 1 12em; min-width: 10em; }
@@ -58,7 +61,29 @@
                     </div>
                     <button id="discEdSave" is="emby-button" type="button" class="raised button-submit"><span>Save</span></button>
                     <button id="discEdReload" is="emby-button" type="button" class="raised"><span>Reload</span></button>
+                    <button id="discEdNew" is="emby-button" type="button" class="raised"><span>New…</span></button>
+                    <button id="discEdDuplicate" is="emby-button" type="button" class="raised"><span>Duplicate</span></button>
+                    <button id="discEdBackups" is="emby-button" type="button" class="raised"><span>Backups…</span></button>
+                    <button id="discEdDelete" is="emby-button" type="button" class="raised"><span>Delete</span></button>
                     <span id="discEdStatus" class="discEdStatus" role="status"></span>
+                </div>
+
+                <div id="discEdNewPanel" class="discEdPanel" hidden>
+                    <div class="discEdPreviewBar">
+                        <div class="grow"><input id="discEdNewQuery" is="emby-input" type="text" maxlength="100" label="Find a movie or series in your library" /></div>
+                        <button id="discEdNewClose" is="emby-button" type="button" class="raised"><span>Close</span></button>
+                    </div>
+                    <div id="discEdNewMsg" class="fieldDescription" role="status"></div>
+                    <div id="discEdNewList"></div>
+                </div>
+
+                <div id="discEdBackupPanel" class="discEdPanel" hidden>
+                    <div class="discEdPreviewBar">
+                        <strong class="grow" id="discEdBackupTitle">Earlier versions</strong>
+                        <button id="discEdBackupClose" is="emby-button" type="button" class="raised"><span>Close</span></button>
+                    </div>
+                    <div id="discEdBackupMsg" class="fieldDescription" role="status"></div>
+                    <div id="discEdBackupList"></div>
                 </div>
 
                 <div class="discEdBody">
@@ -111,6 +136,10 @@
                 fanart: $('discEdFanart'), fanartOpen: $('discEdFanartOpen'), fanartCat: $('discEdFanartCat'), fanartTarget: $('discEdFanartTarget'),
                 fanartDim: $('discEdFanartDim'), fanartClose: $('discEdFanartClose'), fanartMsg: $('discEdFanartMsg'),
                 fanartGrid: $('discEdFanartGrid'), fanartMore: $('discEdFanartMore'),
+                newBtn: $('discEdNew'), dup: $('discEdDuplicate'), backupsBtn: $('discEdBackups'), del: $('discEdDelete'),
+                newPanel: $('discEdNewPanel'), newQuery: $('discEdNewQuery'), newClose: $('discEdNewClose'), newMsg: $('discEdNewMsg'), newList: $('discEdNewList'),
+                backupPanel: $('discEdBackupPanel'), backupClose: $('discEdBackupClose'), backupTitle: $('discEdBackupTitle'),
+                backupMsg: $('discEdBackupMsg'), backupList: $('discEdBackupList'),
                 file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
                 text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
                 conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
@@ -121,7 +150,7 @@
                 fanart: null, fanartShown: 0, fanartPicked: null,
                 file: null, version: null, loadedText: '', loadedRevision: null, files: [],
                 lastGood: null, shownOnce: false, seq: 0, timer: null, muted: true, loadSeq: 0,
-                errorSource: null // who produced the errors on screen: 'preview' or 'save'
+                titleSeq: 0, errorSource: null // who produced the errors on screen: 'preview' or 'save'
             };
 
             // ---- script modules ---------------------------------------------------------------
@@ -204,6 +233,214 @@
                     }
 
                     return { ok: false, status: 0, data: null };
+                });
+            }
+
+            // ---- file management: new, duplicate, delete, backups ----------------------
+            function firstMessage(r, fallback) {
+                var d = r.data || {};
+                if (d.Errors && d.Errors.length) {
+                    return d.Errors[0].Message;
+                }
+
+                return d.Error || fallback;
+            }
+
+            function updateFileButtons() {
+                var has = state.file !== null;
+                el.dup.disabled = !has;
+                el.del.disabled = !has;
+                el.backupsBtn.disabled = !has;
+            }
+
+            function hidePanels() {
+                el.newPanel.hidden = true;
+                el.backupPanel.hidden = true;
+            }
+
+            function openCreated(file) {
+                hidePanels();
+                return loadFiles(false).then(function () { return openFile(file, true); });
+            }
+
+            function searchTitles() {
+                var q = el.newQuery.value.trim();
+                var mine = ++state.titleSeq;
+                el.newList.textContent = '';
+                if (q.length < 2) {
+                    el.newMsg.textContent = 'Type at least two letters.';
+                    return;
+                }
+
+                el.newMsg.textContent = 'Searching…';
+                callApi('GET', 'DiscMenus/Editor/Titles', { q: q }).then(function (r) {
+                    if (mine !== state.titleSeq) {
+                        return;
+                    }
+
+                    el.newList.textContent = '';
+                    if (!r.ok) {
+                        el.newMsg.textContent = 'The search failed. See the server log.';
+                        return;
+                    }
+
+                    var hits = r.data || [];
+                    el.newMsg.textContent = hits.length ? '' : 'No movie or series in your library matches.';
+                    hits.forEach(function (t) {
+                        var row = document.createElement('div');
+                        row.className = 'discEdRow';
+                        var label = document.createElement('span');
+                        label.className = 'grow';
+                        label.textContent = t.Name + (t.Year ? ' (' + t.Year + ')' : '') + ' - ' + t.Type + (t.HasIds ? '' : ' - no TMDB, IMDB or TVDB id, so it can\'t be matched');
+                        row.appendChild(label);
+                        [['blank', 'Empty menu'], ['draft', 'Starter from its extras']].forEach(function (k) {
+                            if (k[0] === 'draft' && t.Type !== 'Movie') {
+                                return;
+                            }
+
+                            var b = document.createElement('button');
+                            b.type = 'button';
+                            b.className = 'raised';
+                            b.textContent = k[1];
+                            b.disabled = !t.HasIds;
+                            b.addEventListener('click', function () { createMenu(t, k[0]); });
+                            row.appendChild(b);
+                        });
+                        el.newList.appendChild(row);
+                    });
+                });
+            }
+
+            function createMenu(t, kind) {
+                el.newMsg.textContent = 'Creating…';
+                callApi('POST', 'DiscMenus/Editor/New', { item: t.Id, kind: kind }).then(function (r) {
+                    if (!r.ok) {
+                        el.newMsg.textContent = firstMessage(r, 'The menu could not be created.');
+                        return;
+                    }
+
+                    openCreated(r.data.File).then(function () { setStatus('Created ' + r.data.File + '.', 'ok'); });
+                });
+            }
+
+            function openNewPanel() {
+                if (!discardOk()) {
+                    return;
+                }
+
+                hidePanels();
+                el.newPanel.hidden = false;
+                el.newList.textContent = '';
+                el.newMsg.textContent = '';
+                el.newQuery.focus();
+            }
+
+            function duplicateFile() {
+                if (!state.file || !discardOk()) {
+                    return;
+                }
+
+                callApi('POST', 'DiscMenus/Editor/Duplicate', { name: state.file }).then(function (r) {
+                    if (!r.ok) {
+                        setStatus(firstMessage(r, 'This menu could not be copied.'), 'error');
+                        return;
+                    }
+
+                    openCreated(r.data.File).then(function () { setStatus('Copied to ' + r.data.File + ' with a new id.', 'ok'); });
+                });
+            }
+
+            function deleteFile() {
+                var name = state.file;
+                if (!name || !window.confirm('Delete ' + name + '? A backup is kept, and you can put it back with Backups.')) {
+                    return;
+                }
+
+                callApi('DELETE', 'DiscMenus/Editor/File', { name: name }).then(function (r) {
+                    if (!r.ok) {
+                        setStatus(firstMessage(r, 'This menu could not be deleted.'), 'error');
+                        return;
+                    }
+
+                    hidePanels();
+                    state.file = null;
+                    state.loadedText = '';
+                    el.text.value = '';
+                    el.text.disabled = true;
+                    clearErrors();
+                    loadFiles(true).then(function () {
+                        updateFileButtons();
+                        setStatus('Deleted ' + name + '.', 'ok');
+                    });
+                });
+            }
+
+            function stampLabel(stamp) {
+                var m = /^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)/.exec(stamp);
+                if (!m) {
+                    return stamp;
+                }
+
+                var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
+                return d.toLocaleString();
+            }
+
+            function openBackups() {
+                if (!state.file) {
+                    return;
+                }
+
+                hidePanels();
+                el.backupPanel.hidden = false;
+                el.backupTitle.textContent = 'Earlier versions of ' + state.file;
+                el.backupList.textContent = '';
+                el.backupMsg.textContent = 'Loading…';
+                callApi('GET', 'DiscMenus/Editor/Backups', { name: state.file }).then(function (r) {
+                    if (!r.ok) {
+                        el.backupMsg.textContent = 'Could not list the backups. See the server log.';
+                        return;
+                    }
+
+                    var list = r.data || [];
+                    el.backupMsg.textContent = list.length
+                        ? 'Restoring puts the old version back as a new revision, and keeps what it replaces as a backup.'
+                        : 'No earlier versions yet. One is kept each time you save.';
+                    list.forEach(function (b) {
+                        var row = document.createElement('div');
+                        row.className = 'discEdRow';
+                        var label = document.createElement('span');
+                        label.className = 'grow';
+                        label.textContent = stampLabel(b.Stamp) + (b.Revision != null ? ' - revision ' + b.Revision : '') + ' - ' + Math.max(1, Math.round(b.Size / 1024)) + ' KB';
+                        row.appendChild(label);
+                        var btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'raised';
+                        btn.textContent = 'Restore';
+                        btn.addEventListener('click', function () { restoreBackup(b); });
+                        row.appendChild(btn);
+                        el.backupList.appendChild(row);
+                    });
+                });
+            }
+
+            function restoreBackup(b) {
+                if (!discardOk()) {
+                    return;
+                }
+
+                callApi('POST', 'DiscMenus/Editor/Restore', { name: state.file, backup: b.Stamp, version: state.version }).then(function (r) {
+                    if (r.status === 409) {
+                        el.backupMsg.textContent = 'The file changed on the server since you opened it. Reload it, then try again.';
+                        return;
+                    }
+
+                    if (!r.ok) {
+                        el.backupMsg.textContent = firstMessage(r, 'That version could not be restored.');
+                        return;
+                    }
+
+                    hidePanels();
+                    openFile(state.file, true).then(function () { setStatus('Restored the version from ' + stampLabel(b.Stamp) + '.', 'ok'); });
                 });
             }
 
@@ -294,7 +531,8 @@
                     fillFileList(state.file);
                     if (state.files.length === 0) {
                         el.text.disabled = true;
-                        setStatus('No menu files yet. Add one to the menus folder (or build a draft with POST /DiscMenus/Draft/{itemId}).');
+                        updateFileButtons();
+                        setStatus('No menu files yet. Choose New… to make one for a title in your library.');
                         return;
                     }
 
@@ -333,6 +571,7 @@
                     }
 
                     state.file = name;
+                    updateFileButtons();
                     state.version = r.data.Version;
                     state.loadedText = r.data.Json;
                     state.loadedRevision = revisionOf(r.data.Json);
@@ -761,6 +1000,23 @@
             });
 
             el.save.addEventListener('click', function () { save(); });
+            el.newBtn.addEventListener('click', openNewPanel);
+            el.newClose.addEventListener('click', function () { el.newPanel.hidden = true; });
+            el.newQuery.addEventListener('input', function () {
+                clearTimeout(state.titleTimer);
+                state.titleTimer = setTimeout(searchTitles, DELAY);
+            });
+            el.newQuery.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    clearTimeout(state.titleTimer);
+                    searchTitles();
+                }
+            });
+            el.dup.addEventListener('click', duplicateFile);
+            el.del.addEventListener('click', deleteFile);
+            el.backupsBtn.addEventListener('click', openBackups);
+            el.backupClose.addEventListener('click', function () { el.backupPanel.hidden = true; });
             el.reload.addEventListener('click', function () {
                 if (state.file && discardOk()) {
                     openFile(state.file, true);
@@ -812,6 +1068,7 @@
                 new ResizeObserver(fitStage).observe(el.stage);
             }
 
+            updateFileButtons();
             page.addEventListener('pageshow', function () {
                 if (!el.frame.getAttribute('src')) {
                     el.frame.src = ApiClient.getUrl('DiscMenus/web/preview.html');

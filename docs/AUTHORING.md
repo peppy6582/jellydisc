@@ -255,13 +255,22 @@ the live preview update beside it.
   revision for you when you changed something; keeps the previous version as a timestamped backup (the
   newest 25 per file, in the plugin's data folder); and checks the file hasn't changed on disk since you
   opened it, offering to load the server's version or overwrite if it has. Ctrl+S saves.
+- **Managing files.** **New…** finds a movie or series in your library and makes an empty menu for it (its
+  ids and a Main Menu with Play) or, for a movie, a starter built from its real extras and chapters; it never
+  overwrites a file. **Duplicate** copies the open menu beside it with a fresh `menuId` and revision 1.
+  **Delete** removes a menu you made (a backup is kept); menus installed from the catalogue are removed on
+  the Menu Catalogue page instead. **Backups…** lists the saved earlier versions; **Restore** puts one back
+  as a new revision with the current `menuId` (a revision never goes down) and backs up what it replaces.
 - **Admin API:** `GET /DiscMenus/Editor/Files`, `GET /DiscMenus/Editor/File?name=`,
-  `PUT /DiscMenus/Editor/File?name=&version=` (the body is the menu text) and
+  `PUT /DiscMenus/Editor/File?name=&version=` (the body is the menu text), `DELETE /DiscMenus/Editor/File?name=`,
+  `GET /DiscMenus/Editor/Titles?q=`, `POST /DiscMenus/Editor/New?item=&kind=blank|draft`,
+  `POST /DiscMenus/Editor/Duplicate?name=`, `GET /DiscMenus/Editor/Backups?name=`,
+  `POST /DiscMenus/Editor/Restore?name=&backup=&version=` and
   `POST /DiscMenus/Editor/Preview?file=` (the body is the menu text; returns exactly what the player
   endpoint would serve for it).
 
-Not in the editor yet: forms for editing properties, dragging buttons into place, uploading art or
-audio, and creating a menu from a title in the UI. See the [roadmap](ROADMAP.md).
+Not in the editor yet: forms for editing properties, dragging buttons into place, and uploading art or
+audio. See the [roadmap](ROADMAP.md).
 
 ## Checking a menu from the command line
 

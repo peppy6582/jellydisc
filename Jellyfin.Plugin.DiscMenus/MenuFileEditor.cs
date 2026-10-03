@@ -31,6 +31,17 @@ public sealed record EditorSaveResult(
     IReadOnlyList<EditorError>? Errors = null,
     string? Error = null);
 
+/// <summary>A saved earlier version of a menu file. <paramref name="Stamp"/> (yyyyMMddHHmmssfff, UTC) identifies it.</summary>
+public sealed record EditorBackup(string Stamp, long Size, int? Revision, DateTime ModifiedUtc);
+
+/// <summary>The outcome of duplicating a menu: the new file's name and version.</summary>
+public sealed record EditorCopyResult(
+    EditorResultKind Kind,
+    string? File = null,
+    string? Version = null,
+    IReadOnlyList<EditorError>? Errors = null,
+    string? Error = null);
+
 /// <summary>
 /// The file side of the live menu editor: lists, reads and saves menu files, and checks what is
 /// being saved. Takes its folders as parameters (rather than reading plugin settings) so it can be
@@ -44,6 +55,7 @@ public sealed class MenuFileEditor
 
     private const int KeepBackups = 25;
     private const string MenuSuffix = ".menu.json";
+    private const string CatalogueFolder = "catalogue";
 
     private static readonly Regex Segment = new(@"^[\p{L}\p{N} ._()\-]+$", RegexOptions.Compiled);
 
@@ -409,6 +421,182 @@ public sealed class MenuFileEditor
         {
             return true;
         }
+    }
+
+    private static readonly Regex StampPattern = new(@"^\d{17}$", RegexOptions.Compiled);
+
+    private static int? RevisionOf(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("revision", out var r) && r.TryGetInt32(out var n) ? n : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? MenuIdOf(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("menuId", out var id) ? id.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Makes a copy of a menu beside the original (or in the menus folder itself, for one installed from the catalogue): a fresh <c>menuId</c> and
+    /// revision 1, everything else exactly as it was written. Never overwrites: the name is the original's plus "-copy", "-copy-2", and so on.
+    /// </summary>
+    public EditorCopyResult Duplicate(string? name)
+    {
+        var read = Read(name);
+        if (read.Kind != EditorResultKind.Ok)
+        {
+            return new EditorCopyResult(read.Kind, Error: read.Error);
+        }
+
+        var errors = Validate(read.Json!);
+        if (errors.Count > 0)
+        {
+            return new EditorCopyResult(EditorResultKind.Invalid, Errors: errors);
+        }
+
+        string text;
+        try
+        {
+            text = JsonSplice.ReplaceTopLevel(read.Json!, "menuId", "\"" + Guid.NewGuid().ToString("D") + "\"");
+            text = JsonSplice.ReplaceTopLevel(text, "revision", "1");
+        }
+        catch (JsonException ex)
+        {
+            return new EditorCopyResult(EditorResultKind.Invalid, Errors: new[] { new EditorError("This menu can't be copied: " + ex.Message) });
+        }
+
+        var stem = Path.GetFileName(name!)[..^MenuSuffix.Length];
+        var folder = name!.StartsWith(CatalogueFolder + "/", StringComparison.Ordinal) || !name.Contains('/') ? string.Empty : name[..(name.LastIndexOf('/') + 1)];
+        for (var i = 1; i <= 99; i++)
+        {
+            var candidate = folder + stem + "-copy" + (i == 1 ? string.Empty : "-" + i) + MenuSuffix;
+            var created = Create(candidate, text);
+            if (created.Kind == EditorResultKind.Ok)
+            {
+                return new EditorCopyResult(EditorResultKind.Ok, candidate, created.Version);
+            }
+
+            if (created.Kind != EditorResultKind.Conflict)
+            {
+                return new EditorCopyResult(created.Kind, Errors: created.Errors, Error: created.Error);
+            }
+        }
+
+        return new EditorCopyResult(EditorResultKind.Conflict, Error: "There are already too many copies of this menu.");
+    }
+
+    /// <summary>
+    /// Deletes a menu the user made or copied (keeping a backup). Menus installed from the catalogue are not deleted here: removing one also has
+    /// to remove its record of what was installed, which the Menu Catalogue page does.
+    /// </summary>
+    public EditorSaveResult DeleteUserMenu(string? name)
+    {
+        if (name is not null && name.StartsWith(CatalogueFolder + "/", StringComparison.Ordinal))
+        {
+            return new EditorSaveResult(EditorResultKind.BadName, Error: "This menu was installed from the catalogue. Remove it on the Menu Catalogue page.");
+        }
+
+        return Delete(name);
+    }
+
+    /// <summary>The saved earlier versions of a menu, newest first.</summary>
+    public IReadOnlyList<EditorBackup> ListBackups(string? name)
+    {
+        var (kind, _, _) = Resolve(name);
+        if (kind != EditorResultKind.Ok || !Directory.Exists(_backups))
+        {
+            return Array.Empty<EditorBackup>();
+        }
+
+        var pattern = new Regex("^" + Regex.Escape(name!.Replace('/', '~')) + @"\.(\d{17})\.bak$");
+        var found = new List<EditorBackup>();
+        foreach (var path in Directory.EnumerateFiles(_backups))
+        {
+            var m = pattern.Match(Path.GetFileName(path));
+            if (!m.Success)
+            {
+                continue;
+            }
+
+            var info = new FileInfo(path);
+            int? revision = null;
+            if (info.Length <= MaxBytes)
+            {
+                revision = RevisionOf(Decode(File.ReadAllBytes(path)));
+            }
+
+            found.Add(new EditorBackup(m.Groups[1].Value, info.Length, revision, info.LastWriteTimeUtc));
+        }
+
+        return found.OrderByDescending(b => b.Stamp, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// Puts an earlier version back as the current one. It is saved as a NEW revision (the current revision plus one) with the current
+    /// <c>menuId</c>, never as the old revision number: a revision that goes down is refused everywhere, and bindings are tied to the id.
+    /// The version being replaced is itself backed up, and a file that changed since <paramref name="expectedVersion"/> is a conflict.
+    /// </summary>
+    public EditorSaveResult Restore(string? name, string? stamp, string? expectedVersion)
+    {
+        var (kind, _, error) = Resolve(name);
+        if (kind != EditorResultKind.Ok)
+        {
+            return new EditorSaveResult(kind, Error: error);
+        }
+
+        if (stamp is null || !StampPattern.IsMatch(stamp))
+        {
+            return new EditorSaveResult(EditorResultKind.BadName, Error: "That isn't a valid backup.");
+        }
+
+        var current = Read(name);
+        if (current.Kind != EditorResultKind.Ok)
+        {
+            return new EditorSaveResult(current.Kind, Error: current.Error);
+        }
+
+        var backupPath = Path.Combine(_backups, name!.Replace('/', '~') + "." + stamp + ".bak");
+        if (!File.Exists(backupPath))
+        {
+            return new EditorSaveResult(EditorResultKind.NotFound, Error: "No such backup.");
+        }
+
+        if (new FileInfo(backupPath).Length > MaxBytes)
+        {
+            return new EditorSaveResult(EditorResultKind.TooLarge, Error: "That backup is too large to restore here.");
+        }
+
+        var text = Decode(File.ReadAllBytes(backupPath));
+        try
+        {
+            var next = (RevisionOf(current.Json!) ?? RevisionOf(text) ?? 0) + 1;
+            text = JsonSplice.ReplaceTopLevel(text, "revision", next.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (MenuIdOf(current.Json!) is { } currentId)
+            {
+                text = JsonSplice.ReplaceTopLevel(text, "menuId", JsonSerializer.Serialize(currentId));
+            }
+        }
+        catch (JsonException)
+        {
+            return new EditorSaveResult(EditorResultKind.Invalid, Errors: new[] { new EditorError("That backup isn't a menu that can be restored.") });
+        }
+
+        return Save(name, text, expectedVersion);
     }
 
     private void Backup(string name, byte[] content)

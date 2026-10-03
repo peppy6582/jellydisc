@@ -114,6 +114,90 @@ public sealed class DiscMenusEditorController : ControllerBase
         });
     }
 
+    /// <summary>Movies and series in the library matching a name, for choosing the title of a new menu.</summary>
+    [HttpGet("Titles")]
+    public ActionResult GetTitles([FromQuery] string? q) =>
+        Ok(_discMenuService.SearchTitles(q).Select(t => new { t.Id, t.Name, t.Year, t.Type, t.HasIds }));
+
+    /// <summary>
+    /// Creates a menu for a library title: <c>kind=blank</c> (just its ids and a Play button) or <c>kind=draft</c> (a starter menu from its real
+    /// extras and chapters; movies only). Never overwrites a file. Returns the new file's name and version.
+    /// </summary>
+    [HttpPost("New")]
+    public ActionResult NewMenu([FromQuery] Guid item, [FromQuery] string? kind)
+    {
+        if (kind is not ("blank" or "draft"))
+        {
+            return BadRequest(new { Error = "kind must be blank or draft." });
+        }
+
+        var outcome = kind == "draft" ? _discMenuService.WriteDraft(item, force: true) : _discMenuService.WriteBlank(item);
+        if (outcome.StatusCode != 200 || outcome.FileName is null)
+        {
+            return StatusCode(outcome.StatusCode, new { Error = outcome.Error });
+        }
+
+        var read = _discMenuService.CreateEditor().Read(outcome.FileName);
+        return Ok(new { File = outcome.FileName, read.Version });
+    }
+
+    /// <summary>A copy of a menu with a fresh id and revision 1, beside the original. Never overwrites.</summary>
+    [HttpPost("Duplicate")]
+    public ActionResult Duplicate([FromQuery] string? name)
+    {
+        var result = _discMenuService.CreateEditor().Duplicate(name);
+        if (result.Kind == EditorResultKind.Ok)
+        {
+            _discMenuService.NotifyFilesChanged();
+            return Ok(new { result.File, result.Version });
+        }
+
+        return result.Kind == EditorResultKind.Invalid
+            ? StatusCode(422, new { Errors = result.Errors })
+            : Failure(result.Kind, result.Error);
+    }
+
+    /// <summary>Deletes a menu (a backup is kept). Menus installed from the catalogue are removed on the catalogue page instead.</summary>
+    [HttpDelete("File")]
+    public ActionResult DeleteFile([FromQuery] string? name)
+    {
+        var result = _discMenuService.CreateEditor().DeleteUserMenu(name);
+        if (result.Kind == EditorResultKind.Ok)
+        {
+            _discMenuService.NotifyFilesChanged();
+            return Ok(new { Deleted = true });
+        }
+
+        return Failure(result.Kind, result.Error);
+    }
+
+    /// <summary>The saved earlier versions of a menu, newest first.</summary>
+    [HttpGet("Backups")]
+    public ActionResult GetBackups([FromQuery] string? name) =>
+        Ok(_discMenusBackups(name));
+
+    /// <summary>Puts an earlier version back as a new revision (the current file is backed up first). <c>version</c> is the version the editor last read.</summary>
+    [HttpPost("Restore")]
+    public ActionResult Restore([FromQuery] string? name, [FromQuery] string? backup, [FromQuery] string? version)
+    {
+        var result = _discMenuService.CreateEditor().Restore(name, backup, version);
+        if (result.Kind == EditorResultKind.Ok)
+        {
+            _discMenuService.NotifyFilesChanged();
+            return Ok(new { Version = result.Version });
+        }
+
+        return result.Kind switch
+        {
+            EditorResultKind.Invalid => StatusCode(422, new { Errors = result.Errors }),
+            EditorResultKind.Conflict => Conflict(new { Error = result.Error, CurrentVersion = result.Version }),
+            _ => Failure(result.Kind, result.Error),
+        };
+    }
+
+    private IEnumerable<object> _discMenusBackups(string? name) =>
+        _discMenuService.CreateEditor().ListBackups(name).Select(b => new { b.Stamp, b.Size, b.Revision, b.ModifiedUtc });
+
     // The body as text, or null if it exceeds the editor's size limit.
     private async Task<string?> ReadBodyAsync()
     {

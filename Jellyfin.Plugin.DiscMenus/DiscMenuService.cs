@@ -176,6 +176,109 @@ public sealed class DiscMenuService : IDisposable
         return outcome;
     }
 
+    /// <summary>A title in the library that a menu could be made for.</summary>
+    public sealed record TitleHit(Guid Id, string Name, int? Year, string Type, bool HasIds);
+
+    /// <summary>Movies and series whose name matches, for the editor's "new menu for a title" search (at most 15, best matches first).</summary>
+    public IReadOnlyList<TitleHit> SearchTitles(string? query)
+    {
+        var q = (query ?? string.Empty).Trim();
+        if (q.Length < 2 || q.Length > 100)
+        {
+            return Array.Empty<TitleHit>();
+        }
+
+        return _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            SearchTerm = q,
+            IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series },
+            Recursive = true,
+            IsVirtualItem = false,
+            Limit = 15,
+        })
+        .Select(i => new TitleHit(
+            i.Id,
+            i.Name ?? string.Empty,
+            i.ProductionYear,
+            i is MediaBrowser.Controller.Entities.Movies.Movie ? "Movie" : "Series",
+            ProviderIdsOf(i).Any(p => p.Key.ToLowerInvariant() is "tmdb" or "imdb" or "tvdb" && !string.IsNullOrEmpty(p.Value))))
+        .ToList();
+    }
+
+    /// <summary>
+    /// Writes an EMPTY menu for a title (its ids, a Main Menu with Play) into the menus folder and returns its file name. Never overwrites: a taken name
+    /// gets "-2", "-3"... The result is checked by the same loader that reads every menu.
+    /// </summary>
+    public DraftOutcome WriteBlank(Guid itemId)
+    {
+        var item = _libraryManager.GetItemById(itemId);
+        if (item is null)
+        {
+            return new DraftOutcome(null, null, 404, "No such library item.");
+        }
+
+        var type = item switch
+        {
+            MediaBrowser.Controller.Entities.Movies.Movie => "Movie",
+            MediaBrowser.Controller.Entities.TV.Series => "Series",
+            MediaBrowser.Controller.Entities.TV.Season => "Season",
+            _ => null,
+        };
+        if (type is null)
+        {
+            return new DraftOutcome(null, null, 400, "A menu can be made for a movie, a series or a season.");
+        }
+
+        var ids = item is MediaBrowser.Controller.Entities.TV.Season season && _libraryManager.GetItemById(season.ParentId) is { } series
+            ? ProviderIdsOf(series)
+            : ProviderIdsOf(item);
+        try
+        {
+            var menu = MenuBlankBuilder.Build(type, ids, item.ProductionYear, (item as MediaBrowser.Controller.Entities.TV.Season)?.IndexNumber);
+            var json = menu.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            MenuFileLoader.ParseMenu(json, "generated menu");
+
+            var stem = MenuDraftBuilder.Slug(item.Name ?? string.Empty);
+            if (stem.Length == 0)
+            {
+                stem = item.Id.ToString("N");
+            }
+
+            if (item.ProductionYear is { } y)
+            {
+                stem += "-" + y;
+            }
+
+            var editor = CreateEditor();
+            for (var i = 1; i <= 50; i++)
+            {
+                var file = stem + (i == 1 ? string.Empty : "-" + i) + ".menu.json";
+                var created = editor.Create(file, json);
+                if (created.Kind == EditorResultKind.Ok)
+                {
+                    InvalidateSnapshot();
+                    return new DraftOutcome(menu, file, 200, null);
+                }
+
+                if (created.Kind != EditorResultKind.Conflict)
+                {
+                    return new DraftOutcome(null, null, 400, created.Error ?? "The menu could not be created.");
+                }
+            }
+
+            return new DraftOutcome(null, null, 409, "There are already too many menus with that name.");
+        }
+        catch (ArgumentException ex)
+        {
+            return new DraftOutcome(null, null, 400, ex.Message);
+        }
+        catch (MenuValidationException ex)
+        {
+            _logger.LogError("A generated empty menu failed validation: {Errors}", string.Join("; ", ex.Errors));
+            return new DraftOutcome(null, null, 500, "The generated menu failed validation: " + string.Join("; ", ex.Errors.Take(3)));
+        }
+    }
+
     /// <summary>The menu editor's file access, pointed at the current menus folder and the plugin's backup folder.</summary>
     public MenuFileEditor CreateEditor() => new(MenusPath, AssetsPath, Path.Combine(Plugin.Instance!.DataFolderPath, "backups"));
 
