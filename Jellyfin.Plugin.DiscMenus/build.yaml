@@ -1,6 +1,6 @@
 name: "Disc Menus"
 guid: "913b9d44-cafe-4fe7-ae0b-f1362dc12cc7"
-version: "0.1.0.0"
+version: "0.2.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 owner: "peppy6582"
@@ -14,5 +14,9 @@ category: "General"
 artifacts:
   - "Jellyfin.Plugin.DiscMenus.dll"
 changelog: >
+  - 0.2.0.0: A Menu Catalogue page in the dashboard to browse, install, update and remove menus from the
+    community catalogue (your library is never sent anywhere; every menu is checked against a published
+    fingerprint). fanart.tv backgrounds, looked up and served by your own server with your own API key, and a
+    fanart.tv picker in the Menu Editor. The settings page gains a write-only fanart.tv key with a test button.
   - 0.1.0.0: Early alpha. Shareable disc menus with layouts, backgrounds, music, transitions and scene
     selection; automatic matching to library titles; a dashboard menu editor with live preview.
