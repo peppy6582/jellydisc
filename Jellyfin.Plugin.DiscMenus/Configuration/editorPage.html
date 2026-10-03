@@ -32,6 +32,17 @@
                     #discEdStage { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; overflow: hidden; border-radius: 4px; }
                     #discEdFrame { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; background: #000; }
                     #discEdNote { margin-top: 0.5em; }
+                    .discEdFanart { margin-top: 0.75em; padding: 0.75em; border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 4px; }
+                    .discEdFanartHead { display: flex; flex-wrap: wrap; gap: 0.75em; align-items: flex-end; }
+                    .discEdFanartHead .grow { flex: 1 1 11em; min-width: 9em; }
+                    .discEdFanartGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11em, 1fr)); gap: 0.6em; margin-top: 0.6em; }
+                    .discEdFanartCell { display: block; padding: 0; border: 2px solid transparent; border-radius: 4px; background: rgba(128, 128, 128, 0.15); color: inherit; cursor: pointer; text-align: left; font: inherit; }
+                    .discEdFanartCell:hover, .discEdFanartCell:focus-visible { border-color: #00a4dc; outline: none; }
+                    .discEdFanartCell.picked { border-color: #52b54b; }
+                    .discEdFanartCell img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 2px 2px 0 0; background: #000; }
+                    .discEdFanartCell span { display: block; padding: 0.25em 0.5em; font-size: 0.8em; opacity: 0.85; }
+                    #discEdFanartMsg { margin-top: 0.5em; }
+                    #discEdFanartMsg button { background: none; border: none; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
                 </style>
 
                 <h2>Menu Editor</h2>
@@ -63,10 +74,22 @@
                     <div class="discEdPane">
                         <div class="discEdPreviewBar">
                             <div class="grow"><select id="discEdMenu" is="emby-select" label="Show menu"></select></div>
+                            <button id="discEdFanartOpen" is="emby-button" type="button" class="raised"><span>Fanart…</span></button>
                             <button id="discEdMute" is="emby-button" type="button" class="raised"><span>Sound off</span></button>
                         </div>
                         <div id="discEdStage"><iframe id="discEdFrame" title="Live preview of the menu"></iframe></div>
                         <div id="discEdNote" class="fieldDescription"></div>
+                        <div id="discEdFanart" class="discEdFanart" hidden>
+                            <div class="discEdFanartHead">
+                                <div class="grow"><select id="discEdFanartCat" is="emby-select" label="Pictures"></select></div>
+                                <div class="grow"><select id="discEdFanartTarget" is="emby-select" label="Use as the background of"></select></div>
+                                <div class="grow"><input id="discEdFanartDim" is="emby-input" type="number" min="0" max="1" step="0.05" value="0.5" label="Darkening (0 to 1)" /></div>
+                                <button id="discEdFanartClose" is="emby-button" type="button" class="raised"><span>Close</span></button>
+                            </div>
+                            <div id="discEdFanartMsg" class="fieldDescription" role="status"></div>
+                            <div id="discEdFanartGrid" class="discEdFanartGrid"></div>
+                            <button id="discEdFanartMore" is="emby-button" type="button" class="raised" hidden><span>Show more</span></button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -85,6 +108,9 @@
             }
 
             var el = {
+                fanart: $('discEdFanart'), fanartOpen: $('discEdFanartOpen'), fanartCat: $('discEdFanartCat'), fanartTarget: $('discEdFanartTarget'),
+                fanartDim: $('discEdFanartDim'), fanartClose: $('discEdFanartClose'), fanartMsg: $('discEdFanartMsg'),
+                fanartGrid: $('discEdFanartGrid'), fanartMore: $('discEdFanartMore'),
                 file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
                 text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
                 conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
@@ -92,6 +118,7 @@
             };
 
             var state = {
+                fanart: null, fanartShown: 0, fanartPicked: null, fanartUndo: null,
                 file: null, version: null, loadedText: '', loadedRevision: null, files: [],
                 lastGood: null, shownOnce: false, seq: 0, timer: null, muted: true, loadSeq: 0,
                 errorSource: null // who produced the errors on screen: 'preview' or 'save'
@@ -441,6 +468,309 @@
                 bumpRevision();
                 return doSave(state.version);
             }
+
+            // ---- fanart.tv picker ------------------------------------------------------------
+            // Sets a menu's (or every page's) background to a fanart.tv picture by patching ONLY that property in the text, so the
+            // author's formatting, comments-by-convention and key order are left exactly as they were.
+            function scanJson(text) {
+                var i = 0;
+                function fail(why) { throw new Error(why || 'not JSON'); }
+                function ws() { while (i < text.length && ' \t\r\n'.indexOf(text.charAt(i)) >= 0) { i++; } }
+                function str() {
+                    if (text.charAt(i) !== '"') { fail(); }
+                    i++;
+                    while (i < text.length) {
+                        var c = text.charAt(i);
+                        if (c === '\\') { i += 2; } else if (c === '"') { i++; return; } else { i++; }
+                    }
+
+                    fail();
+                }
+
+                function value(depth) {
+                    if (depth > 64) { fail('too deep'); }
+                    ws();
+                    var start = i, c = text.charAt(i);
+                    if (c === '{') {
+                        i++;
+                        var props = [];
+                        ws();
+                        if (text.charAt(i) === '}') { i++; return { type: 'object', start: start, end: i, props: props }; }
+                        for (;;) {
+                            ws();
+                            var ks = i;
+                            str();
+                            var key = JSON.parse(text.slice(ks, i));
+                            ws();
+                            if (text.charAt(i) !== ':') { fail(); }
+                            i++;
+                            var v = value(depth + 1);
+                            props.push({ key: key, keyStart: ks, value: v });
+                            ws();
+                            if (text.charAt(i) === ',') { i++; continue; }
+                            if (text.charAt(i) === '}') { i++; break; }
+                            fail();
+                        }
+
+                        return { type: 'object', start: start, end: i, props: props };
+                    }
+
+                    if (c === '[') {
+                        i++;
+                        ws();
+                        if (text.charAt(i) === ']') { i++; return { type: 'array', start: start, end: i }; }
+                        for (;;) {
+                            value(depth + 1);
+                            ws();
+                            if (text.charAt(i) === ',') { i++; continue; }
+                            if (text.charAt(i) === ']') { i++; break; }
+                            fail();
+                        }
+
+                        return { type: 'array', start: start, end: i };
+                    }
+
+                    if (c === '"') { str(); return { type: 'string', start: start, end: i }; }
+                    var m = /^(-?\d+(\.\d+)?([eE][+-]?\d+)?|true|false|null)/.exec(text.slice(i));
+                    if (!m) { fail(); }
+                    i += m[0].length;
+                    return { type: 'prim', start: start, end: i };
+                }
+
+                var root = value(0);
+                ws();
+                if (i !== text.length) { fail('trailing text'); }
+                return root;
+            }
+
+            function lastProp(obj, key) {
+                var found = null;
+                obj.props.forEach(function (p) { if (p.key === key) { found = p; } });
+                return found;
+            }
+
+            // menuKey '' = the whole menu's default background; otherwise that page's own.
+            function setBackground(text, menuKey, bg) {
+                var root;
+                try {
+                    root = scanJson(text);
+                } catch (e) {
+                    throw new Error('The JSON has an error, so the picker cannot edit it. Fix the error shown above first.');
+                }
+
+                if (root.type !== 'object') { throw new Error('This file is not a menu (it should be a JSON object).'); }
+                var target = root;
+                if (menuKey) {
+                    var menus = lastProp(root, 'menus');
+                    if (!menus || menus.value.type !== 'object') { throw new Error('This menu has no "menus" section.'); }
+                    var page = lastProp(menus.value, menuKey);
+                    if (!page || page.value.type !== 'object') { throw new Error('There is no menu "' + menuKey + '" in this file.'); }
+                    target = page.value;
+                }
+
+                var fresh = '{ "source": "fanart", "fanartId": ' + JSON.stringify(String(bg.fanartId)) + ', "dim": ' + Number(bg.dim) + ' }';
+                var existing = lastProp(target, 'background');
+                var out;
+                if (existing) {
+                    out = text.slice(0, existing.value.start) + fresh + text.slice(existing.value.end);
+                } else if (target.props.length === 0) {
+                    out = text.slice(0, target.start) + '{ "background": ' + fresh + ' }' + text.slice(target.end);
+                } else {
+                    // after "match" (the whole menu) or "title" (a page); if absent, after the last property
+                    var anchor = lastProp(target, menuKey ? 'title' : 'match') || target.props[target.props.length - 1];
+                    var lineStart = text.lastIndexOf('\n', anchor.keyStart - 1) + 1;
+                    var lead = text.slice(lineStart, anchor.keyStart);
+                    var gap = lineStart > 0 && /^[ \t]*$/.test(lead) ? (text.charAt(lineStart - 2) === '\r' ? '\r\n' : '\n') + lead : ' ';
+                    out = text.slice(0, anchor.value.end) + ',' + gap + '"background": ' + fresh + text.slice(anchor.value.end);
+                }
+
+                JSON.parse(out); // never hand back something that would not parse
+                return out;
+            }
+
+            // for the tests; harmless to anyone else
+            window.__discMenusEditorTools = { setBackground: setBackground };
+
+            var FANART_PAGE = 12;
+            var FANART_LABELS = {
+                moviebackground: 'Backgrounds', showbackground: 'Backgrounds', hdmovielogo: 'Logos', hdtvlogo: 'Logos', movielogo: 'Logos (SD)',
+                clearlogo: 'Logos (SD)', hdmovieclearart: 'Clear art', hdclearart: 'Clear art', movieart: 'Clear art (SD)', clearart: 'Clear art (SD)',
+                moviedisc: 'Discs', moviebanner: 'Banners', tvbanner: 'Banners', moviethumb: 'Thumbs', tvthumb: 'Thumbs', movieposter: 'Posters',
+                tvposter: 'Posters', characterart: 'Character art', seasonposter: 'Season posters', seasonthumb: 'Season thumbs', seasonbanner: 'Season banners'
+            };
+            var FANART_PROBLEMS = {
+                NoKey: 'No fanart.tv key is saved yet. Add one on the Disc Menus settings page.',
+                BadKey: 'fanart.tv rejected the saved key. Check it on the Disc Menus settings page.',
+                NotFound: 'fanart.tv has no pictures for this title.',
+                RateLimited: 'fanart.tv asked us to slow down. Try again in a minute.',
+                Unavailable: 'fanart.tv could not be reached just now.'
+            };
+
+            function fanartLabel(category) {
+                return FANART_LABELS[category] || category;
+            }
+
+            function fanartMessage(text, undo) {
+                el.fanartMsg.textContent = text || '';
+                if (undo) {
+                    el.fanartMsg.appendChild(document.createTextNode(' '));
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.textContent = 'Undo';
+                    b.addEventListener('click', undoFanart);
+                    el.fanartMsg.appendChild(b);
+                }
+            }
+
+            function fillFanartTargets() {
+                var keep = el.fanartTarget.value;
+                el.fanartTarget.textContent = '';
+                var all = document.createElement('option');
+                all.value = '';
+                all.textContent = "Every page (the menu's default)";
+                el.fanartTarget.appendChild(all);
+                var menus = state.lastGood && state.lastGood.Document && state.lastGood.Document.Menus || {};
+                Object.keys(menus).forEach(function (k) {
+                    var o = document.createElement('option');
+                    o.value = k;
+                    o.textContent = 'Only ' + k + (menus[k].Title ? ' - ' + menus[k].Title : '');
+                    el.fanartTarget.appendChild(o);
+                });
+                if (keep && menus[keep]) {
+                    el.fanartTarget.value = keep;
+                }
+            }
+
+            function openFanart() {
+                el.fanart.hidden = false;
+                el.fanartGrid.textContent = '';
+                el.fanartMore.hidden = true;
+                var item = state.lastGood && state.lastGood.ParentItemId;
+                if (!item) {
+                    fanartMessage("Link this menu to a library title first, so the picker knows whose pictures to show.");
+                    return;
+                }
+
+                fillFanartTargets();
+                if (state.fanart && state.fanart.itemId === item) {
+                    renderFanart();
+                    return;
+                }
+
+                fanartMessage('Asking fanart.tv…');
+                callApi('GET', 'DiscMenus/Fanart/List/' + encodeURIComponent(item)).then(function (r) {
+                    if (!r.ok) {
+                        fanartMessage((r.data && r.data.Error) || 'The pictures could not be listed. See the server log.');
+                        return;
+                    }
+
+                    if (r.data.Status !== 'Ok') {
+                        fanartMessage(FANART_PROBLEMS[r.data.Status] || 'fanart.tv gave an answer the editor does not understand.');
+                        return;
+                    }
+
+                    var groups = {};
+                    (r.data.Images || []).forEach(function (img) {
+                        if (!img || typeof img !== 'object' || typeof img.Id !== 'string' || !/^[0-9]{1,12}$/.test(img.Id) || typeof img.Category !== 'string') {
+                            return;
+                        }
+
+                        (groups[img.Category] = groups[img.Category] || []).push(img);
+                    });
+                    Object.keys(groups).forEach(function (c) {
+                        groups[c].sort(function (a, b) { return (b.Likes || 0) - (a.Likes || 0) || Number(a.Id) - Number(b.Id); });
+                    });
+                    state.fanart = { itemId: item, groups: groups };
+                    renderFanart();
+                });
+            }
+
+            function renderFanart() {
+                var data = state.fanart;
+                var cats = Object.keys(data.groups).sort(function (a, b) {
+                    var wa = /background$/.test(a) ? 0 : 1, wb = /background$/.test(b) ? 0 : 1;
+                    return wa - wb || fanartLabel(a).localeCompare(fanartLabel(b));
+                });
+                if (cats.length === 0) {
+                    fanartMessage('fanart.tv has no pictures for this title.');
+                    return;
+                }
+
+                var keep = el.fanartCat.value;
+                el.fanartCat.textContent = '';
+                cats.forEach(function (c) {
+                    var o = document.createElement('option');
+                    o.value = c;
+                    o.textContent = fanartLabel(c) + ' (' + data.groups[c].length + ')';
+                    el.fanartCat.appendChild(o);
+                });
+                el.fanartCat.value = keep && data.groups[keep] ? keep : cats[0];
+                state.fanartShown = FANART_PAGE;
+                fanartMessage('Pick a picture to use it. Backgrounds work best; your menu\'s darkening keeps the buttons readable.');
+                drawFanartGrid();
+            }
+
+            function drawFanartGrid() {
+                var data = state.fanart;
+                var list = data && data.groups[el.fanartCat.value] || [];
+                el.fanartGrid.textContent = '';
+                list.slice(0, state.fanartShown).forEach(function (img) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'discEdFanartCell' + (state.fanartPicked === img.Id ? ' picked' : '');
+                    b.title = 'Picture ' + img.Id;
+                    var pic = document.createElement('img');
+                    pic.alt = '';
+                    pic.loading = 'lazy';
+                    pic.src = ApiClient.getUrl('DiscMenus/Fanart/' + data.itemId + '/' + img.Id);
+                    var cap = document.createElement('span');
+                    cap.textContent = (img.Lang ? img.Lang + ' · ' : '') + '♥ ' + (img.Likes || 0);
+                    b.appendChild(pic);
+                    b.appendChild(cap);
+                    b.addEventListener('click', function () { applyFanart(img); });
+                    el.fanartGrid.appendChild(b);
+                });
+                el.fanartMore.hidden = list.length <= state.fanartShown;
+            }
+
+            function applyFanart(img) {
+                var dim = parseFloat(el.fanartDim.value);
+                dim = isFinite(dim) ? Math.round(Math.min(1, Math.max(0, dim)) * 100) / 100 : 0.5;
+                var before = el.text.value;
+                var after;
+                try {
+                    after = setBackground(before, el.fanartTarget.value, { fanartId: img.Id, dim: dim });
+                } catch (e) {
+                    fanartMessage(e.message);
+                    return;
+                }
+
+                state.fanartUndo = before;
+                state.fanartPicked = img.Id;
+                el.text.value = after;
+                el.text.dispatchEvent(new Event('input'));
+                var where = el.fanartTarget.value ? 'the "' + el.fanartTarget.value + '" page' : 'every page';
+                fanartMessage('Used picture ' + img.Id + ' for ' + where + '. Save to keep it.', true);
+                drawFanartGrid();
+            }
+
+            function undoFanart() {
+                if (state.fanartUndo === null) {
+                    return;
+                }
+
+                el.text.value = state.fanartUndo;
+                state.fanartUndo = null;
+                state.fanartPicked = null;
+                el.text.dispatchEvent(new Event('input'));
+                fanartMessage('Undone.');
+                drawFanartGrid();
+            }
+
+            el.fanartOpen.addEventListener('click', openFanart);
+            el.fanartClose.addEventListener('click', function () { el.fanart.hidden = true; });
+            el.fanartCat.addEventListener('change', function () { state.fanartShown = FANART_PAGE; drawFanartGrid(); });
+            el.fanartMore.addEventListener('click', function () { state.fanartShown += FANART_PAGE; drawFanartGrid(); });
 
             // ---- wiring (each visit builds a fresh page, so everything is attached here) ----
             el.text.addEventListener('input', function () {

@@ -107,9 +107,11 @@ listed with `GET /Items/{id}/RemoteImages?type=Backdrop&providerName=TheMovieDb`
 that fetches it, with the administrator's own free fanart.tv API key (Dashboard, Disc Menus, *fanart.tv API key*), and keeps a copy in its cache; viewers never contact fanart.tv. That makes it
 work for any client that asks the server, and keeps fanart.tv's traffic and the key on your server. Details:
 
-- **Finding an id.** `fanartId` is the numeric image id from fanart.tv's listing. For a title in your library, ask the server (as an administrator):
-  `GET /DiscMenus/Fanart/List/{itemId}` lists every picture's `Id`, `Category` (such as `moviebackground` or `hdmovielogo`), language and likes.
-  Movies are looked up by their TMDB id and series and seasons by their series' TVDB id, so the title needs one.
+- **The easy way: the Menu Editor's picker.** Open a menu that is linked to a library title, press **Fanart…** above the preview, choose a category (*Backgrounds* is listed first), choose whether the
+  picture is for **every page** or **one page**, set how much to darken it, and click a picture. The editor changes only the `background` property in your text (your formatting and everything else stay as they
+  were), refreshes the preview, and offers **Undo**; press **Save** to keep it. Pictures are shown best-liked first, twelve at a time.
+- **Finding an id by hand.** `fanartId` is the numeric image id from fanart.tv's listing. As an administrator, `GET /DiscMenus/Fanart/List/{itemId}` lists every picture's `Id`, `Category`
+  (such as `moviebackground` or `hdmovielogo`), language and likes. Movies are looked up by their TMDB id and series and seasons by their series' TVDB id, so the title needs one.
 - **Without a key**, or for an id fanart.tv doesn't have for that title, the page shows the plain dark background. A shared menu that uses `fanart` works for anyone who has set a key.
 - **The key** is stored in the plugin's settings, sent only to fanart.tv's API (in a header, never in a link, so it cannot appear in a log), never shown again in the page and never sent to a client.
   The *Test the saved key* button checks it. fanart.tv's own terms apply to your use of their service.
