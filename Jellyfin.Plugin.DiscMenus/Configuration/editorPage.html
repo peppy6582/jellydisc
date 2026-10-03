@@ -1149,10 +1149,18 @@
                 if (p && p.virtual) {
                     el.arrangeText.textContent = 'This screen is generated from the film\'s chapters, so there is nothing to arrange here.';
                 } else if (p && !p.positioned && p.count > 0) {
-                    el.arrangeText.textContent = p.flow
-                        ? 'This page lays its buttons out in an automatic grid, so they can\'t be dragged. You can still move the title and decorations.'
-                        : 'This page lays its buttons out automatically, so they can\'t be dragged yet. You can still move the title and decorations.';
-                    el.freePlace.hidden = !!(p.flow && p.flowFromDocument);
+                    var canFree = !p.flow || (!p.flowFromDocument && p.pages <= 1);
+                    if (!p.flow) {
+                        el.arrangeText.textContent = 'This page lays its buttons out automatically, so they can\'t be dragged yet. You can still move the title and decorations.';
+                    } else if (p.flowFromDocument) {
+                        el.arrangeText.textContent = 'This page uses the whole menu\'s automatic grid, so its buttons can\'t be dragged. You can still move the title and decorations.';
+                    } else if (p.pages > 1) {
+                        el.arrangeText.textContent = 'This page lays its buttons out in an automatic grid with more buttons than fit at once (it pages), so they can\'t be dragged. Make the grid big enough for all of them to place them freely. You can still move the title and decorations.';
+                    } else {
+                        el.arrangeText.textContent = 'This page lays its buttons out in an automatic grid, so they can\'t be dragged. You can still move the title and decorations.';
+                    }
+
+                    el.freePlace.hidden = !canFree;
                 } else {
                     el.arrangeText.textContent = base;
                 }
@@ -1316,16 +1324,25 @@
 
                     var out = text;
                     if (p.flow) {
+                        if (p.pages > 1) {
+                            setStatus('This grid pages (it has more buttons than fit at once), so it can\'t be turned into free placement.', 'error');
+                            return;
+                        }
+
                         if (p.flowFromDocument || !(menu.layout && menu.layout.flow)) {
                             setStatus('This page uses the whole menu\'s automatic grid, so it can\'t be changed from here.', 'error');
                             return;
                         }
 
-                        out = JT.remove(out, ['menus', p.menu, 'layout', 'flow']);
+                        // taking the grid away leaves nothing in the page's layout: remove the empty layout too
+                        out = JT.remove(out, Object.keys(menu.layout).length === 1 ? ['menus', p.menu, 'layout'] : ['menus', p.menu, 'layout', 'flow']);
                     }
 
                     snap.forEach(function (s2) {
-                        var pos = { x: Math.min(100, Math.max(0, roundTo(s2.x, 0.5))), y: Math.min(100, Math.max(0, roundTo(s2.y, 0.5))) };
+                        // A button in a grid is centred in its cell, so keep it centred there; one in a column keeps its top-left corner.
+                        var pos = p.flow
+                            ? { x: Math.min(100, Math.max(0, roundTo(s2.cx, 0.5))), y: Math.min(100, Math.max(0, roundTo(s2.cy, 0.5))), anchor: 'center' }
+                            : { x: Math.min(100, Math.max(0, roundTo(s2.x, 0.5))), y: Math.min(100, Math.max(0, roundTo(s2.y, 0.5))) };
                         out = JT.set(out, ['menus', p.menu, 'entries', s2.index, 'position'], JSON.stringify(pos),
                             { after: ['imageFocus', 'image', 'style', 'perPage', 'startChapter', 'extras', 'extra', 'menu', 'label', 'action'] });
                     });
@@ -1398,7 +1415,7 @@
                         el.menu.value = m.menu;
                     }
 
-                    state.pagePlacement = { menu: m.menu, positioned: !!m.positioned, virtual: !!m.virtual, flow: !!m.flow, flowFromDocument: !!m.flowFromDocument, count: m.count || 0 };
+                    state.pagePlacement = { menu: m.menu, positioned: !!m.positioned, virtual: !!m.virtual, flow: !!m.flow, flowFromDocument: !!m.flowFromDocument, pages: m.pages || 1, count: m.count || 0 };
                     describeArrange();
                 } else if (m.type === 'select') {
                     var picked = pathOfSelection(m);

@@ -933,12 +933,17 @@
         }
 
         var placed = [];
+        // SourceIndex: where the entry is in the menu file (the editor needs it; the grid shows them in its own order, a page at a time).
+        var sourceOf = function (e) {
+            var at = menu.Entries.indexOf(e);
+            return at < 0 ? {} : { SourceIndex: at };
+        };
         p.items.forEach(function (e, i) {
-            placed.push(Object.assign({}, e, { Position: cellPosition(flow, i, !!(e.Image || e.ThumbUrl)) }));
+            placed.push(Object.assign({}, e, sourceOf(e), { Position: cellPosition(flow, i, !!(e.Image || e.ThumbUrl)) }));
         });
         // Navigation sits in the last cells of the grid, in a stable order.
         nav.forEach(function (e, j) {
-            placed.push(Object.assign({}, e, { Position: cellPosition(flow, slots - nav.length + j, !!e.Image) }));
+            placed.push(Object.assign({}, e, sourceOf(e), { Position: cellPosition(flow, slots - nav.length + j, !!e.Image) }));
         });
         return { entries: placed, pages: pages.length, page: page };
     }
@@ -1531,7 +1536,8 @@
         var background = menu.Background || menuDoc.Background;
         var layout = effectiveLayout(menu);
         var defaultStyle = layout.ButtonStyle || 'frame';
-        var shown = entriesForPage(menu, layout, menuKey).entries;
+        var pageInfo = entriesForPage(menu, layout, menuKey);
+        var shown = pageInfo.entries;
         // The server guarantees all-or-none (and flow menus have no hand positions),
         // so one check is enough.
         var positioned = shown.length > 0 && shown.every(function (e) { return !!e.Position; });
@@ -1641,9 +1647,16 @@
 
         shown.forEach(function (entry, entryIndex) {
             var btn = buildEntryButton(entry, defaultStyle, theme, align);
-            if (PREVIEW) {
+            // In a grid the buttons come a page at a time in the grid's order and include Previous/More: only those that are a real entry of the
+            // menu are marked, by their place in the file.
+            var sourceIndex = layout.Flow ? entry.SourceIndex : entryIndex;
+            if (PREVIEW && (entry.Action === 'pagePrev' || entry.Action === 'pageNext')) {
+                btn.setAttribute('data-nav', '1'); // paging still works while arranging, so every page of a grid can be seen
+            }
+
+            if (PREVIEW && typeof sourceIndex === 'number') {
                 btn.setAttribute('data-edit', 'entry');
-                btn.setAttribute('data-index', String(entryIndex));
+                btn.setAttribute('data-index', String(sourceIndex));
             }
 
             if (positioned) {
@@ -1670,7 +1683,7 @@
                 }
             });
             btn.addEventListener('click', function () {
-                if (editMode) {
+                if (editMode && entry.Action !== 'pagePrev' && entry.Action !== 'pageNext') {
                     return; // arranging: a click selects (see the edit-mode handlers), it does not press the button
                 }
 
@@ -1710,7 +1723,8 @@
 
         notifyEditor('navigate', {
             menu: menuKey,
-            positioned: positioned,
+            positioned: positioned && !layout.Flow, // a grid gives every button a place, but not one the menu file holds
+            pages: pageInfo.pages,
             virtual: !!virtualMenus[menuKey],
             flow: !!layout.Flow,
             flowFromDocument: !!layout.Flow && !(menu.Layout && menu.Layout.Flow),
@@ -2401,7 +2415,7 @@
 
     function onEditClick(e) {
         var overlay = document.getElementById(OVERLAY_ID);
-        if (editMode && overlay && overlay.contains(e.target)) {
+        if (editMode && overlay && overlay.contains(e.target) && !(e.target.closest && e.target.closest('[data-nav]'))) {
             e.preventDefault();
             e.stopImmediatePropagation();
         }
@@ -2471,7 +2485,11 @@
 
         Array.prototype.forEach.call(overlay.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]'), function (el) {
             var r = el.getBoundingClientRect();
-            out.push({ index: Number(el.getAttribute('data-index')), x: r.left / size.w * 100, y: r.top / size.h * 100 });
+            out.push({
+                index: Number(el.getAttribute('data-index')),
+                x: r.left / size.w * 100, y: r.top / size.h * 100,
+                cx: (r.left + r.width / 2) / size.w * 100, cy: (r.top + r.height / 2) / size.h * 100,
+            });
         });
         return out;
     }

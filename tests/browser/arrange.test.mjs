@@ -24,6 +24,8 @@ const MENU = JSON.stringify({
       { action: "playFeature", label: "Play Movie", position: { x: 20, y: 60, anchor: "left" } },
       { action: "submenu", label: "More", menu: "plain", position: { x: 70, y: 60, w: 20, h: 10, anchor: "center" } }] },
     plain: { title: "Plain", entries: [{ action: "playFeature", label: "A" }, { action: "back", label: "Back" }] },
+    grid: { title: "Grid", layout: { flow: { region: { x: 50, y: 50, w: 80, h: 30, anchor: "center" }, columns: 3, rows: 1 } }, entries: [{ action: "playFeature", label: "G1" }, { action: "playFeature", label: "G2" }, { action: "back", label: "Back" }] },
+    pages: { title: "Pages", layout: { flow: { region: { x: 50, y: 50, w: 80, h: 30, anchor: "center" }, columns: 2, rows: 1 } }, entries: [{ action: "playFeature", label: "P1" }, { action: "playFeature", label: "P2" }, { action: "playFeature", label: "P3" }, { action: "playFeature", label: "P4" }] },
   },
 }, null, 2) + "\n";
 
@@ -164,6 +166,29 @@ for (const [name, type] of [["chromium", chromium], ["firefox", firefox], ["webk
   const pr = await frame.evaluate(() => [...document.querySelectorAll('[data-edit="entry"]')].map((el) => { const r = el.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y)]; }));
   const expected = t.menus.plain.entries.map((e) => [Math.round(e.position.x / 100 * 1920), Math.round(e.position.y / 100 * 1080)]);
   check("and they stay where they were drawn (within a pixel or two of the half-percent grid)", pr.every((p2, i) => Math.abs(p2[0] - expected[i][0]) <= 12 && Math.abs(p2[1] - expected[i][1]) <= 8), JSON.stringify([pr, expected]));
+
+  // a grid page (as in a menu whose Special Features page lays its buttons out in a row)
+  await page.selectOption("#discEdMenu", "grid"); await page.waitForTimeout(500);
+  const gridNote = await page.textContent("#discEdArrangeText");
+  check("a grid page says it is an automatic grid and offers to place its buttons freely", /automatic grid/.test(gridNote) && await page.isVisible("#discEdFreePlace"), gridNote.slice(0, 70));
+  const gridBefore = await frame.evaluate(() => [...document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map((e) => { const r = e.getBoundingClientRect(); return [e.getAttribute("aria-label"), Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; }));
+  check("its buttons are marked by their place in the file", gridBefore.length === 3 && (await frame.evaluate(() => [...document.querySelectorAll('[data-edit="entry"]')].map((e) => e.dataset.index).sort().join())) === "0,1,2");
+  await page.click("#discEdFreePlace"); await page.waitForTimeout(700);
+  t = await text();
+  check("placing freely centres each button where its cell had it and removes the grid", (!t.menus.grid.layout || !t.menus.grid.layout.flow) && t.menus.grid.entries.every((e) => e.position && e.position.anchor === "center"), JSON.stringify(t.menus.grid.entries.map((e) => e.position)));
+  const gridAfter = await frame.evaluate(() => [...document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map((e) => { const r = e.getBoundingClientRect(); return [e.getAttribute("aria-label"), Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; }));
+  check("and they stay (nearly) where they were", gridAfter.every((g, i) => Math.abs(g[1] - gridBefore[i][1]) <= 14 && Math.abs(g[2] - gridBefore[i][2]) <= 10), JSON.stringify([gridBefore, gridAfter]));
+  await dragBy('[data-edit="entry"][data-index="1"]', 0, 20);
+  check("after that a button drags like any other", near((await text()).menus.grid.entries[1].position.y - t.menus.grid.entries[1].position.y, 20, 1.0));
+  await page.selectOption("#discEdMenu", "pages"); await page.waitForTimeout(500);
+  const pagesNote = await page.textContent("#discEdArrangeText");
+  check("a grid that pages says so and does not offer to place freely", /pages/.test(pagesNote) && !(await page.isVisible("#discEdFreePlace")), pagesNote.slice(0, 80));
+  const idx = () => frame.evaluate(() => [...document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map((e) => e.dataset.index).join());
+  const firstPage = await idx();
+  await frame.evaluate(() => [...document.querySelectorAll(".discMenuEntry")].find((b) => b.getAttribute("aria-label") === "More").click());
+  await page.waitForTimeout(400);
+  const secondPage = await idx();
+  check("paging still works while arranging", firstPage !== secondPage && secondPage.length > 0, firstPage + " -> " + secondPage);
 
   // the preview does not steal the keyboard from the editor's own fields
   await page.click("#discEdArrange"); await page.waitForTimeout(200);

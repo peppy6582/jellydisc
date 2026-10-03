@@ -121,6 +121,26 @@ const approx=(a,b)=>Math.abs(a-b)<1e-9;
   const snap=(()=>{ w.DiscMenusPreview.goTo('plain'); return w.DiscMenusPreview.snapshot(); })();
   check(snap.length===2&&snap[0].index===0&&snap[1].index===1&&typeof snap[0].x==='number','snapshot() lists where each button of the page is now, by index', JSON.stringify(snap));
 
+  console.log('--- a grid (flow) page');
+  const gridDoc=doc(); gridDoc.Menus.grid={Title:'Grid',Layout:{Flow:{Region:{X:50,Y:50,W:80,H:40,Anchor:'center'},Columns:2,Rows:2}},Entries:[{Action:'home',Label:'Home'},{Action:'playFeature',Label:'A'},{Action:'playFeature',Label:'B'}]};
+  gridDoc.Menus.paged={Title:'Paged',Layout:{Flow:{Region:{X:50,Y:50,W:80,H:40,Anchor:'center'},Columns:2,Rows:2}},Entries:[1,2,3,4,5,6].map(n=>({Action:'playFeature',Label:'E'+n}))};
+  w=boot(); w.DiscMenusPreview.show(gridDoc,'P'); w.DiscMenusPreview.setEditMode(true); w.DiscMenusPreview.goTo('grid');
+  let gnav=lastMsg(w,'navigate');
+  check(gnav.menu==='grid'&&gnav.positioned===false&&gnav.flow===true&&gnav.flowFromDocument===false&&gnav.pages===1&&gnav.count===3,'a grid page is reported as not positioned, with its grid and page count', JSON.stringify(gnav));
+  const gl=[...w.document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map(e=>e.getAttribute('aria-label')+'='+e.dataset.index).join();
+  check(gl==='A=1,B=2,Home=0','grid buttons are identified by their place in the file, not their place in the grid (Home is pinned last but is entry 0)', gl);
+  w.__msgs.length=0; drag(w,[...w.document.querySelectorAll('[data-edit="entry"]')].find(e=>e.getAttribute('aria-label')==='B'),500,500,700,600);
+  check(msgs(w,'move').length===0&&lastMsg(w,'select').index===2,'a grid button can be selected (as entry 2) but not dragged', JSON.stringify(lastMsg(w,'select')));
+  w.DiscMenusPreview.goTo('paged'); gnav=lastMsg(w,'navigate');
+  check(gnav.pages===2&&gnav.positioned===false&&gnav.count===6,'a grid with more buttons than fit says it pages', JSON.stringify(gnav));
+  const first=[...w.document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map(e=>e.dataset.index).join();
+  check(first==='0,1,2','only real entries are marked (the More button is not an entry of the file)', first);
+  const more=[...w.document.querySelectorAll('.discMenuEntry')].find(b=>b.getAttribute('aria-label')==='More');
+  check(more&&more.getAttribute('data-nav')==='1'&&!more.getAttribute('data-edit'),'More is marked as navigation, not as something to arrange');
+  w.__under=more; ptr(w,'pointerdown',10,10); ptr(w,'pointerup',10,10); more.click();
+  const second=[...w.document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map(e=>e.dataset.index).join();
+  check(second==='3,4,5'||second==='3,4'||/^3/.test(second),'paging still works while arranging, so every page of a grid can be seen', second);
+
   console.log('--- resizing');
   w=boot(); show(w); w.DiscMenusPreview.setEditMode(true); w.__msgs.length=0;
   press(w,layer(w,0,'document'),960,950); ptr(w,'pointerup',960,950);
