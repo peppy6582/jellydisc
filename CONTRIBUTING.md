@@ -34,6 +34,14 @@ starting.
 5. **Keep it dependency-light.** The renderer and the dashboard pages are plain JavaScript with no build
    step on purpose.
 
+## Using AI tools
+
+This project is itself written with an AI coding assistant (see the [README](README.md)), so using one to help is fine. What matters is that **you** stand behind what you submit:
+
+- Say in the pull request if an AI tool wrote or substantially helped with the change.
+- Read it, run it, and understand it well enough to explain it and to answer review comments yourself.
+- Write the pull request description, issues and comments yourself, in your own words. Jellyfin's own spaces (its forum, feature requests and official repositories) do not accept AI-written posts, and this project asks the same courtesy.
+
 ## Workflow
 
 1. Fork the repository and create a branch from `main`.

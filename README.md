@@ -141,6 +141,8 @@ To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## Credits and licence
 
+This is a **third-party community plugin**. It is not an official Jellyfin project and is not endorsed by the Jellyfin team. It was written with an AI coding assistant; see the note at the top of this page.
+
 Copyright (C) 2026 Phillip Berryman. Licensed under the [GNU General Public License v3.0](LICENSE)
 (GPL-3.0-only), the same licence as the Jellyfin packages the plugin builds on.
 

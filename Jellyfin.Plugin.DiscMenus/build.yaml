@@ -10,6 +10,8 @@ description: >
   resolves them against a local, never-shared binding file
   (schema/binding.schema.json), and exposes the matched entries as the
   parent item's Special Features.
+  Developed primarily with an AI coding assistant (Claude Code) and not
+  independently reviewed by a human: see the README before relying on it.
 category: "General"
 artifacts:
   - "Jellyfin.Plugin.DiscMenus.dll"
