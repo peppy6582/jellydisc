@@ -65,9 +65,19 @@ type, or just build and read the compiler's `CS0234` / `CS0246` error.
 
 ## Injecting a script into the web client
 
-Jellyfin core has no supported way for a plugin to modify jellyfin-web. The community workaround is the
-separate **File Transformation** plugin, which hooks the middleware so other plugins can rewrite served
-files (such as `index.html`).
+Jellyfin core has no supported way for a plugin to modify jellyfin-web. This plugin does it with its own
+middleware (`IndexHtmlInjection.cs`), so nothing else needs installing:
+
+- A plugin can register an `IStartupFilter` from its `IPluginServiceRegistrator`; the filter puts a middleware at the start of
+  the web server's pipeline. Ours wraps `GET /web`, `/web/` and `/web/index.html`, buffers the answer, and adds one
+  `<script>` before the last `</body>`. Details that matter: the base URL (`Request.PathBase`) goes into the script address, so a
+  configured base URL works; the request is made unconditional and uncompressed (`Accept-Encoding`, `If-None-Match`... are dropped)
+  because the page must be read as text and a browser must not keep a copy without the tag; the stale `ETag` and `Last-Modified`
+  are removed; only a plain 200 HTML answer is changed; and a page that already has the tag is left alone.
+- Jellyfin's own files are never edited.
+
+The community **File Transformation** plugin does the same job for plugins that don't want to write middleware, and this plugin
+still registers with it if it is installed (harmless, see "left alone" above). How that registration works:
 
 - Register with `PluginInterface.RegisterTransformation(JObject payload)`; the payload has an `id` (a guid),
   `fileNamePattern` (a regex tested against the path relative to `/web/`, so use `^index\.html$`, anchored),

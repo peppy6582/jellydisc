@@ -44,8 +44,8 @@ How to build, test, run and understand the project. For *using* it see the [READ
 Inside `Jellyfin.Plugin.DiscMenus/`:
 
 - **Plugin shell:** `Plugin.cs` (identity and the two dashboard pages), `ServiceRegistrator.cs`,
-  `FileTransformationIntegration.cs` (registers the renderer script with the separately installed
-  *File Transformation* plugin, which is how it gets into jellyfin-web).
+  `IndexHtmlInjection.cs` (the middleware that adds the renderer script to jellyfin-web's start page: no other plugin needed) and
+  `FileTransformationIntegration.cs` (optional: also registers with the *File Transformation* plugin if it is installed).
 - **Model and validation:** `Model/` mirrors the two schemas as C# types; `MenuFileLoader.cs` parses a
   menu and runs the semantic and presentation checks. The JSON Schema in `schema/`, `tools/validate.py`
   and `MenuFileLoader` are **three implementations of the same rules** (menus are untrusted input, and
@@ -150,10 +150,7 @@ output was also compared against a live server's responses.)
 
 ## Trying it on a Jellyfin server
 
-You need a **Jellyfin 12.x** server. To see menus in the web client you also need the
-[File Transformation](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation) plugin, which
-lets this plugin add its script to jellyfin-web. Without it the plugin's API and dashboard pages still
-work; there is just no **Disc Menu** button.
+You need a **Jellyfin 12.x** server. Nothing else is required: the plugin adds its own script to jellyfin-web.
 
 A plugin lives in `<jellyfin config>/data/plugins/<Name>_<version>/` containing the DLL and a `meta.json`:
 

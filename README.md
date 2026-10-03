@@ -66,9 +66,7 @@ viewer on the right:
 ## Requirements
 
 - **Jellyfin 12.x** server.
-- The [**File Transformation**](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation)
-  plugin, which lets this plugin add its menu to the Jellyfin web client. Without it everything except the
-  on-screen **Disc Menu** button still works.
+- Nothing else: the plugin adds its own button to the Jellyfin web client, so no other plugin is needed.
 - The menus are shown in the **Jellyfin web client** for now. Other clients can't render them yet (see the
   [roadmap](docs/ROADMAP.md)).
 
@@ -81,8 +79,7 @@ viewer on the right:
    https://github.com/peppy6582/jellydisc/releases/latest/download/manifest.json
    ```
 
-   (Or build it yourself: see the [development guide](docs/DEVELOPMENT.md#trying-it-on-a-jellyfin-server).) To show the
-   **Disc Menu** button in the web client you also need the File Transformation plugin, see Requirements above.
+   (Or build it yourself: see the [development guide](docs/DEVELOPMENT.md#trying-it-on-a-jellyfin-server).)
 2. **Choose a folder for your menus:** the plugin uses a `menus` folder in its own data folder by default, or
    set the **Menus directory** on the plugin's page in the Jellyfin dashboard (**Disc Menus** in the sidebar).
 3. **Add a menu:** copy a `.menu.json` into that folder. Try one from [`examples/`](examples/README.md), or
@@ -153,8 +150,9 @@ Copyright (C) 2026 Phillip Berryman. Licensed under the [GNU General Public Lice
   by the licence.** They show a menu built for a real film, so they contain stills, a poster and a menu
   design that belong to their owners. They're there only to illustrate the plugin; if you are a rights
   holder and want them removed, please open an issue.
-- Menus are shown through [Jellyfin](https://jellyfin.org). The web client integration depends on the
+- Menus are shown through [Jellyfin](https://jellyfin.org). Earlier versions relied on the
   [File Transformation](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation) plugin by
-  IAmParadox27.
+  IAmParadox27 to reach the web client; the idea of hooking the served page is theirs, and the plugin still cooperates with it if it is
+  installed, but it no longer needs it.
 - Movie and series metadata and images come from TMDB through Jellyfin. This product uses the TMDB API but
   is not endorsed or certified by TMDB.

@@ -195,20 +195,12 @@ public sealed class DiscMenusController : ControllerBase
             ? NoContent()
             : NotFound($"No extra '{extraKey}' on the menu bound to '{parentItemId}'.");
 
-    /// <summary>
-    /// Changes on every build, so the injected script URL changes with it and a
-    /// browser can never keep running a stale cached renderer after an update.
-    /// </summary>
-    private static readonly string ScriptVersion =
-        typeof(DiscMenusController).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+    private static string ScriptVersion => ScriptInfo.Version;
 
     /// <summary>
-    /// Called by the "File Transformation" plugin (server-to-server, no Jellyfin
-    /// session) to inject the web menu renderer's script tag into jellyfin-web's
-    /// index.html. See FileTransformationIntegration.cs for the registration side.
-    /// Body is a plain JSON object with a single "contents" field (the full file
-    /// text); response body is the transformed text, read back as a raw string -
-    /// see File Transformation's TransformationHelper.ApplyTransformation.
+    /// Called by the optional "File Transformation" plugin (server-to-server, no Jellyfin session) when it is installed and serves index.html itself.
+    /// Without it the plugin's own middleware (IndexHtmlInjection.cs) adds the same tag. Body is a plain JSON object with a single "contents"
+    /// field (the full file text); response body is the transformed text.
     /// </summary>
     [HttpPost("web/Transform")]
     [AllowAnonymous]
@@ -218,14 +210,7 @@ public sealed class DiscMenusController : ControllerBase
         var raw = await reader.ReadToEndAsync();
         using var doc = System.Text.Json.JsonDocument.Parse(raw);
         var contents = doc.RootElement.TryGetProperty("contents", out var contentsProp) ? contentsProp.GetString() ?? string.Empty : string.Empty;
-
-        const string BodyCloseTag = "</body>";
-        var insertAt = contents.LastIndexOf(BodyCloseTag, StringComparison.OrdinalIgnoreCase);
-        var result = insertAt < 0
-            ? contents
-            : contents[..insertAt] + $"<script src=\"/DiscMenus/web/discmenus.js?v={ScriptVersion}\"></script>\n" + contents[insertAt..];
-
-        return Content(result, "text/html");
+        return Content(IndexHtmlInjector.Inject(contents, null, ScriptVersion), "text/html");
     }
 
     private static readonly Dictionary<string, string> AssetTypes = new(StringComparer.OrdinalIgnoreCase)

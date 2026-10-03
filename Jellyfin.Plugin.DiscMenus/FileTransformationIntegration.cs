@@ -6,8 +6,9 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.DiscMenus;
 
 /// <summary>
-/// Registers our web-renderer script injection with the (optional, separately
-/// installed) "File Transformation" plugin - https://github.com/IAmParadox27/jellyfin-plugin-file-transformation.
+/// OPTIONAL compatibility: if the separately installed "File Transformation" plugin is present, also registers our script injection with it, in
+/// case it serves index.html itself ahead of our own middleware (IndexHtmlInjection.cs, which is what normally does the job and needs nothing else).
+/// Registers with the "File Transformation" plugin - https://github.com/IAmParadox27/jellyfin-plugin-file-transformation.
 /// That plugin lets other plugins modify jellyfin-web's served files (here,
 /// index.html) without patching jellyfin-web itself; it's not built into
 /// Jellyfin core. Its own plugins load in separate AssemblyLoadContexts, so
@@ -52,9 +53,7 @@ public sealed class FileTransformationIntegration : IHostedService
 
         if (fileTransformationAssembly is null || fileTransformationContext is null)
         {
-            _logger.LogInformation(
-                "File Transformation plugin not installed; the web menu renderer will not be injected into jellyfin-web. "
-                + "Install it from https://www.iamparadox.dev/jellyfin/plugins/manifest.json to enable it.");
+            _logger.LogDebug("File Transformation plugin not installed; not needed, the plugin adds its own script to the web client.");
             return;
         }
 
