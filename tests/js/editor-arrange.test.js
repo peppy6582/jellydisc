@@ -173,14 +173,14 @@ const arrange=async(w)=>{ $(w,'discEdArrange').click(); await sleep(20); };
   check(vis('discEdFitGrid')&&vis('discEdFitFree')&&vis('discEdGridSettings')&&!vis('discEdFreePlace'),'and offers to enlarge it, to enlarge and place, or to show its settings (not the plain place-freely)');
   $(w,'discEdFitGrid').click(); await sleep(40);
   let fl=J(w).menus.flowed.layout.flow;
-  check(fl.columns===5&&fl.rows===2,'"Make the grid big enough" keeps the columns and adds rows (5x1 -> 5x2 for 6 buttons)', JSON.stringify(fl));
-  check(/5 across by 2 down, enough for all 6/.test($(w,'discEdStatus').textContent),'and says what it did', $(w,'discEdStatus').textContent);
+  check(fl.columns===6&&fl.rows===1,'"Make the grid big enough" adds a column to a one-row strip (5x1 -> 6x1 for 6 buttons): it stays a strip', JSON.stringify(fl));
+  check(/6 across by 1 down, enough for all 6/.test($(w,'discEdStatus').textContent),'and says what it did', $(w,'discEdStatus').textContent);
   $(w,'discEdUndo').click(); await sleep(30); check(J(w).menus.flowed.layout.flow.rows===1,'one Undo puts the grid back');
   // enlarge and place: the buttons are placed once the preview shows the bigger grid
   w.__snapshot=[0,1,2,3,4,5].map(i=>({index:i,x:i*10,y:50,cx:i*10+5,cy:55}));
   $(w,'discEdFitFree').click(); await sleep(40);
-  check(J(w).menus.flowed.layout&&J(w).menus.flowed.layout.flow.rows===2&&J(w).menus.flowed.entries.every(e=>!e.position),'"Make it big enough and place freely" first enlarges the grid');
-  navFlow({pages:1,rows:2}); await sleep(60);
+  check(J(w).menus.flowed.layout&&J(w).menus.flowed.layout.flow.columns===6&&J(w).menus.flowed.entries.every(e=>!e.position),'"Make it big enough and place freely" first enlarges the grid');
+  navFlow({pages:1,columns:6,rows:1}); await sleep(60);
   check(!('layout' in J(w).menus.flowed)&&J(w).menus.flowed.entries.every(e=>e.position&&e.position.anchor==='center'),'and places the buttons as soon as the preview has drawn the bigger grid', JSON.stringify(J(w).menus.flowed.layout)+JSON.stringify(J(w).menus.flowed.entries[0]));
   w=boot(GT); await start(w); await arrange(w); navFlow(); await sleep(20);
   w.__snapshot=[0,1,2,3,4,5].map(i=>({index:i,x:i*10,y:50,cx:i*10+5,cy:55}));
@@ -190,6 +190,13 @@ const arrange=async(w)=>{ $(w,'discEdArrange').click(); await sleep(20); };
   const bigText=JSON.parse(GT); bigText.menus.flowed.layout.flow.rows=2; w=boot(JSON.stringify(bigText,null,2)); await start(w); await arrange(w); navFlow({pages:2,rows:2}); await sleep(20);
   const keepBig=T(w); $(w,'discEdFitGrid').click(); await sleep(40);
   check(T(w)===keepBig&&/already has room for all 6 buttons/.test($(w,'discEdStatus').textContent),'when the grid already has room but the page still pages, it says so and changes nothing', $(w,'discEdStatus').textContent);
+  // a wide grid that cannot take more columns gets rows; a tall one gets columns
+  const wide=JSON.parse(TEXT); wide.menus.flowed.layout.flow={region:{x:10,y:30,w:80,h:60},columns:8,rows:1}; wide.menus.flowed.entries=Array.from({length:10},(_,i)=>({action:'back',label:'B'+i}));
+  w=boot(JSON.stringify(wide,null,2)); await start(w); await arrange(w); navFlow({pages:2,columns:8,rows:1,count:10}); await sleep(20); $(w,'discEdFitGrid').click(); await sleep(40);
+  fl=J(w).menus.flowed.layout.flow; check(fl.columns===8&&fl.rows===2,'when the columns are already at the most (8), rows are added instead (8x1 -> 8x2 for 10 buttons)', JSON.stringify(fl));
+  const tall=JSON.parse(TEXT); tall.menus.flowed.layout.flow={region:{x:10,y:10,w:20,h:80},columns:1,rows:3}; tall.menus.flowed.entries=Array.from({length:4},(_,i)=>({action:'back',label:'B'+i}));
+  w=boot(JSON.stringify(tall,null,2)); await start(w); await arrange(w); navFlow({pages:2,columns:1,rows:3,count:4}); await sleep(20); $(w,'discEdFitGrid').click(); await sleep(40);
+  fl=J(w).menus.flowed.layout.flow; check(fl.columns*fl.rows>=4&&fl.columns<=8&&fl.rows<=12,'a tall grid is enlarged within the limits too', JSON.stringify(fl));
   // many buttons: rows are capped at 12, so columns grow instead
   const many=JSON.parse(TEXT); many.menus.flowed.layout.flow={region:{x:10,y:30,w:80,h:60},columns:2,rows:2}; many.menus.flowed.entries=Array.from({length:40},(_,i)=>({action:'back',label:'B'+i}));
   w=boot(JSON.stringify(many,null,2)); await start(w); await arrange(w); navFlow({pages:9,columns:2,rows:2,count:40}); await sleep(20); $(w,'discEdFitGrid').click(); await sleep(40);

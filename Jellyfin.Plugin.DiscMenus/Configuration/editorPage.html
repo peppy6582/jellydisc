@@ -1233,13 +1233,31 @@
                         return true;
                     }
 
-                    var newCols = cols;
-                    var newRows = Math.ceil(need / cols);
-                    if (newRows > 12) {
-                        newCols = Math.min(8, Math.ceil(need / 12));
-                        newRows = Math.ceil(need / newCols);
+                    // Either add rows or add columns, whichever leaves each button closest to the shape it has now (a one-row strip should stay a
+                    // strip). Columns stop at 8 and rows at 12; where only one fits, that one.
+                    var region = flow.region || {};
+                    var shape = function (c, r) { return ((Number(region.w) || 80) * 16 / c) / ((Number(region.h) || 60) * 9 / r); }; // width / height of one cell
+                    var now = shape(cols, rows);
+                    var byRows = { cols: cols, rows: Math.ceil(need / cols) };
+                    var byCols = { cols: Math.ceil(need / rows), rows: rows };
+                    var okRows = byRows.rows <= 12;
+                    var okCols = byCols.cols <= 8;
+                    var pick;
+                    if (okRows && okCols) {
+                        var dRows = Math.abs(Math.log(shape(byRows.cols, byRows.rows) / now));
+                        var dCols = Math.abs(Math.log(shape(byCols.cols, byCols.rows) / now));
+                        pick = dCols < dRows - 1e-9 ? byCols : byRows;
+                    } else if (okRows) {
+                        pick = byRows;
+                    } else if (okCols) {
+                        pick = byCols;
+                    } else {
+                        var c2 = Math.min(8, Math.ceil(need / 12));
+                        pick = { cols: c2, rows: Math.ceil(need / c2) };
                     }
 
+                    var newCols = pick.cols;
+                    var newRows = pick.rows;
                     var base = ['menus', p.menu, 'layout', 'flow'];
                     var out = el.text.value;
                     if (newCols !== cols) {
