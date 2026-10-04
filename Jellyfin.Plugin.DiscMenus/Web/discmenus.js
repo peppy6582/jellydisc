@@ -2491,6 +2491,7 @@
                 index: Number(el.getAttribute('data-index')),
                 x: r.left / size.w * 100, y: r.top / size.h * 100,
                 cx: (r.left + r.width / 2) / size.w * 100, cy: (r.top + r.height / 2) / size.h * 100,
+                w: r.width / size.w * 100, h: r.height / size.h * 100,
             });
         });
         return out;

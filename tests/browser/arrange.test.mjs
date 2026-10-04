@@ -176,9 +176,11 @@ for (const [name, type] of [["chromium", chromium], ["firefox", firefox], ["webk
   check("its buttons are marked by their place in the file", gridBefore.length === 3 && (await frame.evaluate(() => [...document.querySelectorAll('[data-edit="entry"]')].map((e) => e.dataset.index).sort().join())) === "0,1,2");
   await page.click("#discEdFreePlace"); await page.waitForTimeout(700);
   t = await text();
-  check("placing freely centres each button where its cell had it and removes the grid", (!t.menus.grid.layout || !t.menus.grid.layout.flow) && t.menus.grid.entries.every((e) => e.position && e.position.anchor === "center"), JSON.stringify(t.menus.grid.entries.map((e) => e.position)));
+  check("placing freely centres each button where its cell had it and removes the grid", (!t.menus.grid.layout || !t.menus.grid.layout.flow) && t.menus.grid.entries.every((e) => e.position && e.position.anchor === "center" && e.position.w > 3), JSON.stringify(t.menus.grid.entries.map((e) => e.position)));
   const gridAfter = await frame.evaluate(() => [...document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map((e) => { const r = e.getBoundingClientRect(); return [e.getAttribute("aria-label"), Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; }));
   check("and they stay (nearly) where they were", gridAfter.every((g, i) => Math.abs(g[1] - gridBefore[i][1]) <= 14 && Math.abs(g[2] - gridBefore[i][2]) <= 10), JSON.stringify([gridBefore, gridAfter]));
+  const overlap = await frame.evaluate(() => { const r = [...document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map((e) => e.getBoundingClientRect()); for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) if (r[i].left < r[j].right - 1 && r[j].left < r[i].right - 1 && r[i].top < r[j].bottom - 1 && r[j].top < r[i].bottom - 1) return true; return false; });
+  check("the freed buttons do not overlap each other", overlap === false);
   await dragBy('[data-edit="entry"][data-index="1"]', 0, 20);
   check("after that a button drags like any other", near((await text()).menus.grid.entries[1].position.y - t.menus.grid.entries[1].position.y, 20, 1.0));
   await page.selectOption("#discEdMenu", "pages"); await page.waitForTimeout(500);

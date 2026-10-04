@@ -119,7 +119,7 @@ const approx=(a,b)=>Math.abs(a-b)<1e-9;
   check(msgs(w,'move').length===0&&lastMsg(w,'select')&&lastMsg(w,'select').kind==='entry','its buttons can be selected but not dragged');
   w.DiscMenusPreview.goTo('main'); check(lastMsg(w,'navigate').positioned===true,'a positioned page says so');
   const snap=(()=>{ w.DiscMenusPreview.goTo('plain'); return w.DiscMenusPreview.snapshot(); })();
-  check(snap.length===2&&snap[0].index===0&&snap[1].index===1&&typeof snap[0].x==='number','snapshot() lists where each button of the page is now, by index', JSON.stringify(snap));
+  check(snap.length===2&&snap[0].index===0&&snap[1].index===1&&typeof snap[0].x==='number'&&typeof snap[0].w==='number'&&typeof snap[0].cx==='number','snapshot() lists where each button of the page is now, by index', JSON.stringify(snap));
 
   console.log('--- a grid (flow) page');
   const gridDoc=doc(); gridDoc.Menus.grid={Title:'Grid',Layout:{Flow:{Region:{X:50,Y:50,W:80,H:40,Anchor:'center'},Columns:2,Rows:2}},Entries:[{Action:'home',Label:'Home'},{Action:'playFeature',Label:'A'},{Action:'playFeature',Label:'B'}]};
