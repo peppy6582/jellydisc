@@ -24,6 +24,7 @@ Working today, on Jellyfin 12.x with the web client:
 
 ### Menu Editor
 - Drag the paging grid's region and its cells on the preview (buttons, the title and layers can be dragged already). 
+- Open the designer for a menu straight from a title's page or the Menu Catalogue (it opens from the editor today).
 - Undo and redo within an editing session. 
 
 ### Discovery and library

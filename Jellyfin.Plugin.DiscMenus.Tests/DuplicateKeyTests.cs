@@ -75,6 +75,8 @@ public class EditorModuleResourceTests
     [InlineData("outline")]
     [InlineData("schema-hints")]
     [InlineData("inspector")]
+    [InlineData("pictures")]
+    [InlineData("designer-host")]
     public void TheModuleIsEmbedded(string name)
     {
         var assembly = typeof(MenuFileLoader).Assembly;

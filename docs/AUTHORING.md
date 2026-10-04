@@ -270,6 +270,12 @@ the live preview update beside it.
   **Delete** removes a menu you made (a backup is kept); menus installed from the catalogue are removed on
   the Menu Catalogue page instead. **Backups…** lists the saved earlier versions; **Restore** puts one back
   as a new revision with the current `menuId` (a revision never goes down) and backs up what it replaces.
+- **Full-size designer.** **Open full size** (in the bar) opens the same editor in a window of its own: the outline and form as a sidebar
+  on the left and the preview as large as the window allows, with the text as a drawer on the right and panels floating over the page.
+  Jellyfin always draws a plugin's dashboard page inside its own frame, so this is a separate page the plugin serves
+  (`/DiscMenus/web/designer.html`, optionally `?file=<menu file>`). It is the editor page's own markup and code, so the two always match. It
+  uses the sign-in your browser already has for Jellyfin (it must be an administrator's); with none, or one the server refuses, the page
+  says so and links to Jellyfin. It opens the saved version of the menu, so save first if you have unsaved changes in the dashboard editor.
 - **Arranging on the preview.** **Arrange** turns the preview into a canvas: click a button, the title or a decorative layer to select
   it (the outline and form follow), drag it to move it, drag a round handle to resize a layer or a button you gave a width or height.
   Positions are percentages of the screen, snapped to half a percent and to the centre lines (hold **Alt** for no snapping); the arrow
@@ -277,7 +283,10 @@ the live preview update beside it.
   takes it back. A page that lays its buttons out itself can't have them dragged: **Let me place the buttons freely** gives each
   button the place it has now (and removes that page's own automatic grid, because a grid and positions can't be mixed). Moving
   a title that takes its place from the whole menu's layout gives that page its own copy instead of moving every page's title.
-  The generated scene-selection screen can't be arranged. Arranging is hidden on narrow windows.
+  The note under the preview explains, for the page you are on, why its buttons can't be dragged and offers the next step: for a grid
+  that pages it gives the numbers (for example "5 across by 1 down, 5 spots, but 6 buttons") with **Make the grid big enough** and **Make it
+  big enough and place freely**; for any grid **Show this page's grid settings** opens its columns, rows and area in the form. A page that
+  a Scene Selection button names as its style keeps its grid (it is where the scene pictures go). The generated scene-selection screen can't be arranged. Arranging is hidden on narrow windows.
 - **Pictures, sounds and TMDB backdrops.** A picture or sound field has a **Choose or upload…** button: it lists the files uploaded for
   this menu (kept in `assets/<menuId>/` on the server), lets you upload another and uses the one you pick as an `asset:` reference. Pictures
   are png, jpg or webp up to 5 MB; sounds are mp3, ogg, opus, m4a or wav up to 25 MB; at most 200 files and 100 MB per menu. The server

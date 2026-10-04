@@ -265,6 +265,27 @@ public sealed class DiscMenusController : ControllerBase
         return Content(reader.ReadToEnd().Replace("@@VERSION@@", ScriptVersion), "text/html");
     }
 
+    /// <summary>
+    /// The full-size Menu Designer: the editor page in a window of its own (Jellyfin draws plugin pages inside its dashboard, where the editor is
+    /// cramped). Anonymous like the preview page, because it is only the page: every call it makes is an admin call made with the signed-in user's token.
+    /// </summary>
+    [HttpGet("web/designer.html")]
+    [AllowAnonymous]
+    public ContentResult GetDesignerPage()
+    {
+        var assembly = GetType().Assembly;
+        string Read(string name)
+        {
+            using var stream = assembly.GetManifestResourceStream($"{assembly.GetName().Name}.{name}")
+                ?? throw new InvalidOperationException($"Embedded resource '{name}' not found.");
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
+        Response.Headers.CacheControl = "no-cache";
+        return Content(DesignerPage.Build(Read("Web.designer.html"), Read("Configuration.editorPage.html")), "text/html");
+    }
+
     /// <summary>The web menu renderer script injected into jellyfin-web by <see cref="TransformIndexHtml"/>.</summary>
     /// <summary>
     /// The Menu Editor's script modules (Web/editor/*.js). A dashboard page can only reliably run the script inside its own fragment, so the

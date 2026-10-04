@@ -25,6 +25,7 @@
     <EmbeddedResource Include="Web/discmenus.js" />
     <EmbeddedResource Include="Web/editor/*.js" />
     <EmbeddedResource Include="Web/preview.html" />
+    <EmbeddedResource Include="Web/designer.html" />
   </ItemGroup>
 
 </Project>

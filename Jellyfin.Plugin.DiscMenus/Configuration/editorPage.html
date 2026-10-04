@@ -127,6 +127,7 @@
                     <button id="discEdUndo" is="emby-button" type="button" class="raised" title="Undo the last change (Ctrl+Z)"><span>Undo</span></button>
                     <button id="discEdRedo" is="emby-button" type="button" class="raised" title="Redo (Ctrl+Shift+Z)"><span>Redo</span></button>
                     <button id="discEdToggleText" is="emby-button" type="button" class="raised" aria-pressed="false"><span>Show text</span></button>
+                    <button id="discEdOpenFull" is="emby-button" type="button" class="raised" title="Open the editor in its own full-size window"><span>Open full size</span></button>
                     <button id="discEdDelete" is="emby-button" type="button" class="raised"><span>Delete</span></button>
                     <span id="discEdStatus" class="discEdStatus" role="status"></span>
                 </div>
@@ -236,7 +237,7 @@
                 picsFile: $('discEdPicsFile'), picsRules: $('discEdPicsRules'), picsMsg: $('discEdPicsMsg'), picsList: $('discEdPicsList'),
                 backupPanel: $('discEdBackupPanel'), backupClose: $('discEdBackupClose'), backupTitle: $('discEdBackupTitle'),
                 backupMsg: $('discEdBackupMsg'), backupList: $('discEdBackupList'),
-                outline: $('discEdOutline'), arrange: $('discEdArrange'), arrangeNote: $('discEdArrangeNote'), arrangeText: $('discEdArrangeText'), freePlace: $('discEdFreePlace'), fitGrid: $('discEdFitGrid'), fitFree: $('discEdFitFree'), gridSettings: $('discEdGridSettings'), toggleText: $('discEdToggleText'), undo: $('discEdUndo'), redo: $('discEdRedo'), textPane: $('discEdTextPane'), inspector: $('discEdInspector'),
+                outline: $('discEdOutline'), arrange: $('discEdArrange'), arrangeNote: $('discEdArrangeNote'), arrangeText: $('discEdArrangeText'), freePlace: $('discEdFreePlace'), fitGrid: $('discEdFitGrid'), fitFree: $('discEdFitFree'), gridSettings: $('discEdGridSettings'), toggleText: $('discEdToggleText'), openFull: $('discEdOpenFull'), undo: $('discEdUndo'), redo: $('discEdRedo'), textPane: $('discEdTextPane'), inspector: $('discEdInspector'),
                 file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
                 text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
                 conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
@@ -1032,7 +1033,8 @@
                     }
 
                     if (thenOpen && !state.file) {
-                        openFile(state.files[0].File, true);
+                        var wanted = window.__discMenusPreferredFile; // the full-size designer is opened with ?file=
+                        openFile(wanted && state.files.some(function (f) { return f.File === wanted; }) ? wanted : state.files[0].File, true);
                     }
                 });
             }
@@ -1868,6 +1870,13 @@
             });
 
             el.save.addEventListener('click', function () { save(); });
+            el.openFull.addEventListener('click', function () {
+                if (isDirty() && !window.confirm('You have unsaved changes. The full-size window opens the saved version of this menu, so save first if you want them there. Open it anyway?')) {
+                    return;
+                }
+
+                window.open(ApiClient.getUrl('DiscMenus/web/designer.html', state.file ? { file: state.file } : {}), '_blank');
+            });
             el.arrange.addEventListener('click', function () {
                 state.arrangeOn = !state.arrangeOn;
                 applyArrangeMode();
