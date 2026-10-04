@@ -17,9 +17,10 @@ const TEXT=`{
   "root": "main",
   "layout": { "titlePosition": { "x": 50, "y": 8, "anchor": "top" }, "layers": [ { "type": "panel", "position": { "x": 0, "y": 80, "w": 100, "h": 20 } } ] },
   "menus": {
-    "main": { "title": "Main", "entries": [ { "action": "playFeature", "label": "Play", "position": { "x": 20, "y": 50, "anchor": "left" } }, { "action": "submenu", "label": "More", "menu": "plain", "position": { "x": 60, "y": 50, "w": 20, "h": 10, "anchor": "center" } } ] },
+    "main": { "title": "Main", "entries": [ { "action": "playFeature", "label": "Play", "position": { "x": 20, "y": 50, "anchor": "left" } }, { "action": "submenu", "label": "More", "menu": "plain", "position": { "x": 60, "y": 50, "w": 20, "h": 10, "anchor": "center" } }, { "action": "chapters", "label": "Scene Selection", "menu": "scenes", "position": { "x": 40, "y": 70 } } ] },
     "plain": { "title": "Plain", "entries": [ { "action": "playFeature", "label": "A" }, { "action": "back", "label": "Back", "style": "glow" } ] },
     "flowed": { "title": "Flowed", "layout": { "flow": { "region": { "x": 10, "y": 30, "w": 80, "h": 60 }, "columns": 2, "rows": 2 } }, "entries": [ { "action": "back", "label": "B1" }, { "action": "back", "label": "B2" } ] },
+    "scenes": { "title": "Scenes", "layout": { "flow": { "region": { "x": 50, "y": 54, "w": 86, "h": 66, "anchor": "center" }, "columns": 3, "rows": 3 } }, "entries": [ { "action": "home", "label": "Main Menu" } ] },
     "own": { "title": "Own", "layout": { "layers": [ { "type": "panel", "position": { "x": 10, "y": 10, "w": 30, "h": 30 } } ] }, "entries": [ { "action": "back", "label": "Back", "position": { "x": 50, "y": 90 } } ] }
   }
 }
@@ -47,6 +48,7 @@ const calls=(w,k)=>w.__calls.filter(c=>c[0]===k);
 const arrange=async(w)=>{ $(w,'discEdArrange').click(); await sleep(20); };
 
 (async()=>{
+  check(/#DiscMenusEditorPage \[hidden\] \{ display: none !important; \}/.test(html),'the page makes [hidden] win over jellyfin-web\'s button styling');
   console.log('--- the toggle');
   let w=boot(); await start(w);
   check($(w,'discEdArrangeNote').hidden===true&&$(w,'discEdArrange').getAttribute('aria-pressed')==='false','arranging starts off, with no note');
@@ -137,6 +139,8 @@ const arrange=async(w)=>{ $(w,'discEdArrange').click(); await sleep(20); };
   send(w,{type:'navigate',menu:'flowed',positioned:false,virtual:false,flow:true,flowFromDocument:false,count:2}); await sleep(20);
   check(/automatic grid/.test($(w,'discEdArrangeText').textContent)&&$(w,'discEdFreePlace').hidden===false,'a page with its own grid explains that, and still offers to place freely');
   send(w,{type:'navigate',menu:'flowed',positioned:false,virtual:false,flow:true,flowFromDocument:false,pages:2,count:6}); await sleep(20);
+  w.__snapshot=[{index:0,x:1,y:1,cx:2,cy:2}]; const keepP=T(w); $(w,'discEdFreePlace').click(); await sleep(30);
+  check(T(w)===keepP&&/pages/.test($(w,'discEdStatus').textContent)&&!/measured/.test($(w,'discEdStatus').textContent),'even if the button is pressed on a grid that pages, the reason given is the paging (not a measuring failure), and nothing changes', $(w,'discEdStatus').textContent.slice(0,80));
   check(/pages/.test($(w,'discEdArrangeText').textContent)&&$(w,'discEdFreePlace').hidden===true,'a grid that pages cannot be placed freely: the note says why and the offer is not made', $(w,'discEdArrangeText').textContent.slice(0,80));
   send(w,{type:'navigate',menu:'flowed',positioned:false,virtual:false,flow:true,flowFromDocument:false,pages:1,count:2}); await sleep(20);
   w.__snapshot=[{index:0,x:10,y:30,cx:20,cy:35},{index:1,x:50,y:30,cx:60.2,cy:35.1}];
@@ -152,6 +156,10 @@ const arrange=async(w)=>{ $(w,'discEdArrange').click(); await sleep(20); };
   check(/Drag buttons/.test($(w,'discEdArrangeText').textContent)&&$(w,'discEdFreePlace').hidden===true,'a positioned page shows the normal hint');
   w.__snapshot=[{index:0,x:1,y:1}]; send(w,{type:'navigate',menu:'plain',positioned:false,virtual:false,flow:false,flowFromDocument:false,count:2}); await sleep(10);
   const before2=T(w); $(w,'discEdFreePlace').click(); await sleep(30);
-  check(T(w)===before2&&/could not be measured/.test($(w,'discEdStatus').textContent),'if the preview cannot measure every button, nothing is written');
+  check(T(w)===before2&&/could not be measured on this page \(1 of 2 found on screen, page "plain"\)/.test($(w,'discEdStatus').textContent),'if the preview cannot measure every button, nothing is written and the message says what was found', $(w,'discEdStatus').textContent);
+  send(w,{type:'navigate',menu:'scenes',positioned:false,virtual:false,flow:true,flowFromDocument:false,pages:1,count:1}); await sleep(20);
+  check(/styles the Scene Selection screen/.test($(w,'discEdArrangeText').textContent)&&$(w,'discEdFreePlace').hidden===true,'a page that a Scene Selection button names as its style cannot be placed freely: the note says why and no offer is made', $(w,'discEdArrangeText').textContent.slice(0,60));
+  w.__snapshot=[{index:0,x:1,y:1,cx:2,cy:2}]; const keepS=T(w); $(w,'discEdFreePlace').click(); await sleep(30);
+  check(T(w)===keepS,'and even if asked, nothing is changed (the grid stays)');
   console.log('failures: '+fail); process.exit(fail?1:0);
 })();

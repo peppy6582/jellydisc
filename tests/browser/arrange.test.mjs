@@ -29,7 +29,8 @@ const MENU = JSON.stringify({
   },
 }, null, 2) + "\n";
 
-const page0 = `<!doctype html><meta charset="utf-8"><body style="background:#101010;color:#eee;font-family:sans-serif">${body}
+const page0 = `<!doctype html><meta charset="utf-8"><style>button[is="emby-button"] { display: inline-flex; }</style>
+<body style="background:#101010;color:#eee;font-family:sans-serif">${body}
 <script src="/m/menu-to-renderable.js"></script>
 ${MODULES.map((n) => `<script src="/DiscMenus/web/editor/${n}.js"></script>`).join("\n")}
 <script>
@@ -182,7 +183,10 @@ for (const [name, type] of [["chromium", chromium], ["firefox", firefox], ["webk
   check("after that a button drags like any other", near((await text()).menus.grid.entries[1].position.y - t.menus.grid.entries[1].position.y, 20, 1.0));
   await page.selectOption("#discEdMenu", "pages"); await page.waitForTimeout(500);
   const pagesNote = await page.textContent("#discEdArrangeText");
-  check("a grid that pages says so and does not offer to place freely", /pages/.test(pagesNote) && !(await page.isVisible("#discEdFreePlace")), pagesNote.slice(0, 80));
+  check("a grid that pages says so and does not offer to place freely (even with jellyfin-web's button styling)", /pages/.test(pagesNote) && !(await page.isVisible("#discEdFreePlace")), pagesNote.slice(0, 80));
+  await page.selectOption("#discEdMenu", "main"); await page.waitForTimeout(400);
+  check("a page whose buttons are positioned does not show the offer either", !(await page.isVisible("#discEdFreePlace")));
+  await page.selectOption("#discEdMenu", "pages"); await page.waitForTimeout(400);
   const idx = () => frame.evaluate(() => [...document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]')].map((e) => e.dataset.index).join());
   const firstPage = await idx();
   await frame.evaluate(() => [...document.querySelectorAll(".discMenuEntry")].find((b) => b.getAttribute("aria-label") === "More").click());

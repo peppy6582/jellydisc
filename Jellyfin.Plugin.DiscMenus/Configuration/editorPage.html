@@ -8,6 +8,8 @@
         <div data-role="content">
             <div class="content-primary" style="max-width:none">
                 <style>
+                    /* jellyfin-web styles its buttons with display:inline-flex, which beats the browser's own [hidden]; the editor relies on hidden */
+                    #DiscMenusEditorPage [hidden] { display: none !important; }
                     .discEdBar { display: flex; flex-wrap: wrap; gap: 0.75em; align-items: center; margin: 1em 0; }
                     .discEdBar .discEdFileWrap { flex: 1 1 18em; min-width: 12em; }
                     .discEdStatus { opacity: 0.85; }
@@ -1136,6 +1138,19 @@
                 return win && win.DiscMenusPreview && typeof win.DiscMenusPreview.setEditMode === 'function' ? win.DiscMenusPreview : null;
             }
 
+            // A page that a Scene Selection button names as its style: its grid is where the chapter pictures go, so it is not a page to rearrange.
+            function stylesSceneSelection(key) {
+                try {
+                    var d = JSON.parse(el.text.value);
+                    return Object.keys(d.menus || {}).some(function (k) {
+                        var entries = d.menus[k] && Array.isArray(d.menus[k].entries) ? d.menus[k].entries : [];
+                        return entries.some(function (e) { return e && e.action === 'chapters' && e.menu === key; });
+                    });
+                } catch (ignore) {
+                    return false;
+                }
+            }
+
             function describeArrange() {
                 var p = state.pagePlacement;
                 el.freePlace.hidden = true;
@@ -1146,7 +1161,9 @@
 
                 el.arrangeNote.hidden = false;
                 var base = 'Drag buttons, the title and decorations; drag a round handle to resize. Arrow keys nudge (Shift for more); Alt turns snapping off.';
-                if (p && p.virtual) {
+                if (p && !p.virtual && stylesSceneSelection(p.menu)) {
+                    el.arrangeText.textContent = 'This page styles the Scene Selection screen: its grid is where the chapter pictures go, so its buttons can\'t be placed freely. You can still move the title and decorations.';
+                } else if (p && p.virtual) {
                     el.arrangeText.textContent = 'This screen is generated from the film\'s chapters, so there is nothing to arrange here.';
                 } else if (p && !p.positioned && p.count > 0) {
                     var canFree = !p.flow || (!p.flowFromDocument && p.pages <= 1);
@@ -1312,13 +1329,23 @@
                     return;
                 }
 
+                if (stylesSceneSelection(p.menu)) {
+                    setStatus('This page styles the Scene Selection screen, so its grid has to stay.', 'error');
+                    return;
+                }
+
                 var text = el.text.value;
                 try {
                     var d = JSON.parse(text);
                     var menu = d.menus && d.menus[p.menu];
+                    if (p.flow && p.pages > 1) {
+                        setStatus('This grid pages (it has more buttons than fit at once), so it can\'t be turned into free placement. Make the grid big enough for all of them first.', 'error');
+                        return;
+                    }
+
                     var snap = api.snapshot();
                     if (!menu || !Array.isArray(menu.entries) || snap.length !== menu.entries.length) {
-                        setStatus('The buttons could not be measured on this page.', 'error');
+                        setStatus('The buttons could not be measured on this page (' + snap.length + ' of ' + (menu && Array.isArray(menu.entries) ? menu.entries.length : '0') + ' found on screen, page "' + p.menu + '"). Switch to another page and back, then try again.', 'error');
                         return;
                     }
 
