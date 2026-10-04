@@ -15,6 +15,7 @@
  *   inspector.show(path)      draw the form for the part at path (an array like ['menus','main','entries',0])
  *   inspector.refresh()       redraw from the current text, keeping the focused control
  *   inspector.path()          the path being shown
+ *   inspector.reveal(keys)    open collapsible sections so a setting is visible (for "show me the grid settings")
  *
  *   kindAt(path, doc)         { kind, variant } for a path, or null (also used by tests)
  *
@@ -1162,6 +1163,16 @@
                 draw();
             },
             refresh: draw,
+            // Open the named collapsible sections (keys as used by openGroups: a section's path, or path#more-kind) and bring the last into view.
+            reveal: function (keys) {
+                keys.forEach(function (k) { openGroups[k] = true; });
+                draw();
+                var last = keys[keys.length - 1];
+                var target = container.querySelector('[data-group="' + last + '"]');
+                if (target && typeof target.scrollIntoView === 'function') {
+                    target.scrollIntoView({ block: 'nearest' });
+                }
+            },
             path: function () { return current.slice(); }
         };
     }

@@ -65,7 +65,7 @@
                     .discEdOutline button.bad { color: #e55; }
                     .discEdOutline button.bad::after { content: ' \u25cf'; }
                     .discEdArrangeNote { margin: 0.5em 0; padding: 0.5em 0.75em; border-left: 3px solid #00a4dc; background: rgba(0, 164, 220, 0.1); font-size: 0.9em; }
-                    .discEdArrangeNote button { margin-left: 0.5em; }
+                    .discEdArrangeActions { display: flex; flex-wrap: wrap; gap: 0.5em; margin-top: 0.5em; }
                     @media (max-width: 900px) { #discEdArrange, #discEdArrangeNote { display: none !important; } }
                     .discEdPane { flex: 1 1 28em; min-width: 0; }
                     #discEdText {
@@ -190,8 +190,13 @@
                         <div id="discEdStage"><iframe id="discEdFrame" title="Live preview of the menu"></iframe></div>
                         <div id="discEdNote" class="fieldDescription"></div>
                         <div id="discEdArrangeNote" class="discEdArrangeNote" hidden>
-                            <span id="discEdArrangeText"></span>
-                            <button id="discEdFreePlace" is="emby-button" type="button" class="raised" hidden><span>Let me place the buttons freely</span></button>
+                            <div id="discEdArrangeText"></div>
+                            <div class="discEdArrangeActions">
+                                <button id="discEdFreePlace" is="emby-button" type="button" class="raised" hidden><span>Let me place the buttons freely</span></button>
+                                <button id="discEdFitGrid" is="emby-button" type="button" class="raised" hidden><span>Make the grid big enough</span></button>
+                                <button id="discEdFitFree" is="emby-button" type="button" class="raised" hidden><span>Make it big enough and place freely</span></button>
+                                <button id="discEdGridSettings" is="emby-button" type="button" class="raised" hidden><span>Show this page's grid settings</span></button>
+                            </div>
                         </div>
                         <div id="discEdFanart" class="discEdFanart" hidden>
                             <div class="discEdFanartHead">
@@ -231,7 +236,7 @@
                 picsFile: $('discEdPicsFile'), picsRules: $('discEdPicsRules'), picsMsg: $('discEdPicsMsg'), picsList: $('discEdPicsList'),
                 backupPanel: $('discEdBackupPanel'), backupClose: $('discEdBackupClose'), backupTitle: $('discEdBackupTitle'),
                 backupMsg: $('discEdBackupMsg'), backupList: $('discEdBackupList'),
-                outline: $('discEdOutline'), arrange: $('discEdArrange'), arrangeNote: $('discEdArrangeNote'), arrangeText: $('discEdArrangeText'), freePlace: $('discEdFreePlace'), toggleText: $('discEdToggleText'), undo: $('discEdUndo'), redo: $('discEdRedo'), textPane: $('discEdTextPane'), inspector: $('discEdInspector'),
+                outline: $('discEdOutline'), arrange: $('discEdArrange'), arrangeNote: $('discEdArrangeNote'), arrangeText: $('discEdArrangeText'), freePlace: $('discEdFreePlace'), fitGrid: $('discEdFitGrid'), fitFree: $('discEdFitFree'), gridSettings: $('discEdGridSettings'), toggleText: $('discEdToggleText'), undo: $('discEdUndo'), redo: $('discEdRedo'), textPane: $('discEdTextPane'), inspector: $('discEdInspector'),
                 file: $('discEdFile'), save: $('discEdSave'), reload: $('discEdReload'), status: $('discEdStatus'),
                 text: $('discEdText'), errors: $('discEdErrors'), conflict: $('discEdConflict'),
                 conflictText: $('discEdConflictText'), loadTheirs: $('discEdLoadTheirs'), overwrite: $('discEdOverwrite'),
@@ -242,7 +247,7 @@
                 fanart: null, fanartShown: 0, fanartPicked: null,
                 file: null, version: null, loadedText: '', loadedRevision: null, files: [],
                 lastGood: null, shownOnce: false, seq: 0, timer: null, muted: true, loadSeq: 0,
-                titleSeq: 0, arrangeOn: false, pagePlacement: null, pick: null, selected: [], errors: [], errorSource: null // who produced the errors on screen: 'preview' or 'save'
+                titleSeq: 0, pendingFree: null, arrangeOn: false, pagePlacement: null, pick: null, selected: [], errors: [], errorSource: null // who produced the errors on screen: 'preview' or 'save'
             };
 
             // ---- script modules ---------------------------------------------------------------
@@ -1151,35 +1156,122 @@
                 }
             }
 
+            // What the note under the preview says, in words about THIS page, and which of the buttons under it make sense.
             function describeArrange() {
                 var p = state.pagePlacement;
-                el.freePlace.hidden = true;
+                var show = { free: false, fit: false, fitFree: false, settings: false };
+                var settingsLabel = 'Show this page\'s grid settings';
+                var text;
                 if (!state.arrangeOn) {
                     el.arrangeNote.hidden = true;
+                } else {
+                    el.arrangeNote.hidden = false;
+                    var plural = function (n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); };
+                    if (p && p.virtual) {
+                        text = 'This screen is generated from the film\'s chapters (one picture per scene), so there is nothing to place by hand here.';
+                    } else if (p && stylesSceneSelection(p.menu)) {
+                        text = 'This page is the template for the Scene Selection screen. Its grid is where the scene pictures go (one for each chapter), so it has to stay a grid and its buttons can\'t be placed one by one. To change where the pictures go or how big they are, change this page\'s grid.';
+                        show.settings = true;
+                    } else if (p && !p.positioned && p.count > 0 && !p.flow) {
+                        text = 'This page arranges its buttons in a column by itself, so there is nothing to drag yet. Give every button a place of its own with the button below, then drag them where you like. You can still move the title and decorations now.';
+                        show.free = true;
+                    } else if (p && !p.positioned && p.count > 0 && p.flowFromDocument) {
+                        text = 'This page\'s buttons sit in an automatic grid that every page of this menu shares, so one page can\'t leave it. You can still move the title and decorations. To change the shared grid, open its settings.';
+                        show.settings = true;
+                        settingsLabel = 'Show the whole menu\'s grid settings';
+                    } else if (p && !p.positioned && p.count > 0 && p.pages > 1) {
+                        text = 'This page\'s buttons sit in an automatic grid. The grid has ' + p.columns + ' across by ' + p.rows + ' down (' + plural(p.columns * p.rows, 'spot') + '), but the page has ' + plural(p.count, 'button') +
+                            ', so they are split over pages, and a grid that pages can\'t be dragged. Make the grid big enough for all ' + p.count + ' and you can place them freely.';
+                        show.fit = true;
+                        show.fitFree = true;
+                        show.settings = true;
+                    } else if (p && !p.positioned && p.count > 0) {
+                        text = 'This page\'s buttons sit in an automatic grid: the grid decides where each one goes (neat rows), so they can\'t be dragged one by one. Placing them freely swaps the grid for a position per button, which you can then drag. Or keep the grid and change its size in its settings.';
+                        show.free = true;
+                        show.settings = true;
+                    } else {
+                        text = 'Drag buttons, the title and decorations; drag a round handle to resize. Arrow keys nudge (Shift for more); Alt turns snapping off.';
+                    }
+
+                    el.arrangeText.textContent = text;
+                }
+
+                el.freePlace.hidden = !show.free;
+                el.fitGrid.hidden = !show.fit;
+                el.fitFree.hidden = !show.fitFree;
+                el.gridSettings.hidden = !show.settings;
+                el.gridSettings.querySelector('span').textContent = settingsLabel;
+            }
+
+            // Make the page's own grid big enough for every button: keep its columns and add rows (or add columns when it would need more than 12 rows).
+            function fitGrid() {
+                var JT = window.DiscMenusJsonText;
+                var p = state.pagePlacement;
+                if (!p || !p.flow || p.flowFromDocument) {
+                    return false;
+                }
+
+                try {
+                    var d = JSON.parse(el.text.value);
+                    var flow = d.menus && d.menus[p.menu] && d.menus[p.menu].layout && d.menus[p.menu].layout.flow;
+                    if (!flow) {
+                        setStatus('This page has no grid of its own to enlarge.', 'error');
+                        return false;
+                    }
+
+                    var need = d.menus[p.menu].entries.length;
+                    var cols = Number(flow.columns) || 1;
+                    var rows = Number(flow.rows) || 1;
+                    if (cols * rows >= need) {
+                        if (p.pages > 1) {
+                            setStatus('The grid already has room for all ' + need + ' buttons, but this page still splits them over pages (it may limit how many show at once). Check its grid settings.', 'error');
+                            return false;
+                        }
+
+                        return true;
+                    }
+
+                    var newCols = cols;
+                    var newRows = Math.ceil(need / cols);
+                    if (newRows > 12) {
+                        newCols = Math.min(8, Math.ceil(need / 12));
+                        newRows = Math.ceil(need / newCols);
+                    }
+
+                    var base = ['menus', p.menu, 'layout', 'flow'];
+                    var out = el.text.value;
+                    if (newCols !== cols) {
+                        out = JT.set(out, base.concat(['columns']), String(newCols));
+                    }
+
+                    if (newRows !== rows) {
+                        out = JT.set(out, base.concat(['rows']), String(newRows), { after: ['columns', 'region'] });
+                    }
+
+                    applyText(out);
+                    schedulePreview(60);
+                    setStatus('The grid now has ' + newCols + ' across by ' + newRows + ' down, enough for all ' + need + ' buttons.', 'ok');
+                    return true;
+                } catch (err) {
+                    setStatus('The grid could not be enlarged: ' + (err && err.message), 'error');
+                    return false;
+                }
+            }
+
+            // Open this page's (or the whole menu's) grid settings in the form.
+            function showGridSettings() {
+                var p = state.pagePlacement;
+                if (!p || !ensureInspector()) {
                     return;
                 }
 
-                el.arrangeNote.hidden = false;
-                var base = 'Drag buttons, the title and decorations; drag a round handle to resize. Arrow keys nudge (Shift for more); Alt turns snapping off.';
-                if (p && !p.virtual && stylesSceneSelection(p.menu)) {
-                    el.arrangeText.textContent = 'This page styles the Scene Selection screen: its grid is where the chapter pictures go, so its buttons can\'t be placed freely. You can still move the title and decorations.';
-                } else if (p && p.virtual) {
-                    el.arrangeText.textContent = 'This screen is generated from the film\'s chapters, so there is nothing to arrange here.';
-                } else if (p && !p.positioned && p.count > 0) {
-                    var canFree = !p.flow || (!p.flowFromDocument && p.pages <= 1);
-                    if (!p.flow) {
-                        el.arrangeText.textContent = 'This page lays its buttons out automatically, so they can\'t be dragged yet. You can still move the title and decorations.';
-                    } else if (p.flowFromDocument) {
-                        el.arrangeText.textContent = 'This page uses the whole menu\'s automatic grid, so its buttons can\'t be dragged. You can still move the title and decorations.';
-                    } else if (p.pages > 1) {
-                        el.arrangeText.textContent = 'This page lays its buttons out in an automatic grid with more buttons than fit at once (it pages), so they can\'t be dragged. Make the grid big enough for all of them to place them freely. You can still move the title and decorations.';
-                    } else {
-                        el.arrangeText.textContent = 'This page lays its buttons out in an automatic grid, so they can\'t be dragged. You can still move the title and decorations.';
-                    }
-
-                    el.freePlace.hidden = !canFree;
+                if (p.flowFromDocument) {
+                    selectPath([], false);
+                    inspector.reveal(['#more-document', 'layout', 'layout#more-layout', 'layout/flow']);
                 } else {
-                    el.arrangeText.textContent = base;
+                    selectPath(['menus', p.menu], false);
+                    var k = 'menus/' + p.menu;
+                    inspector.reveal([k + '#more-menu', k + '/layout', k + '/layout#more-layout', k + '/layout/flow']);
                 }
             }
 
@@ -1442,8 +1534,17 @@
                         el.menu.value = m.menu;
                     }
 
-                    state.pagePlacement = { menu: m.menu, positioned: !!m.positioned, virtual: !!m.virtual, flow: !!m.flow, flowFromDocument: !!m.flowFromDocument, pages: m.pages || 1, count: m.count || 0 };
+                    var pending = state.pendingFree;
+                    if (pending && pending.menu !== m.menu) {
+                        state.pendingFree = pending = null; // the author moved to another page: never act on the wrong one
+                    }
+
+                    state.pagePlacement = { menu: m.menu, positioned: !!m.positioned, virtual: !!m.virtual, flow: !!m.flow, flowFromDocument: !!m.flowFromDocument, pages: m.pages || 1, columns: m.columns || 0, rows: m.rows || 0, count: m.count || 0 };
                     describeArrange();
+                    if (pending && pending.menu === m.menu && Date.now() - pending.at < 8000 && m.flow && (m.pages || 1) <= 1) {
+                        state.pendingFree = null;
+                        setTimeout(placeFreely, 0); // the enlarged grid has just been drawn: now place the buttons
+                    }
                 } else if (m.type === 'select') {
                     var picked = pathOfSelection(m);
                     if (picked && state.arrangeOn) {
@@ -1772,6 +1873,25 @@
                 applyArrangeMode();
             });
             el.freePlace.addEventListener('click', placeFreely);
+            el.fitGrid.addEventListener('click', fitGrid);
+            el.fitFree.addEventListener('click', function () {
+                var p = state.pagePlacement;
+                if (!p) {
+                    return;
+                }
+
+                var before = el.text.value;
+                if (!fitGrid()) {
+                    return;
+                }
+
+                if (el.text.value === before) {
+                    placeFreely(); // already big enough
+                } else {
+                    state.pendingFree = { menu: p.menu, at: Date.now() }; // place the buttons once the preview shows the bigger grid
+                }
+            });
+            el.gridSettings.addEventListener('click', showGridSettings);
             // With the text hidden there is no text box to press Ctrl+Z in, so undo is a button and a key on the page. Typing inside a field keeps the
             // browser's own undo for that field.
             el.undo.addEventListener('click', function () { if (adapter) { adapter.undo(); } });

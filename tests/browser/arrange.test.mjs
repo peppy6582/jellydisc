@@ -194,6 +194,17 @@ for (const [name, type] of [["chromium", chromium], ["firefox", firefox], ["webk
   const secondPage = await idx();
   check("paging still works while arranging", firstPage !== secondPage && secondPage.length > 0, firstPage + " -> " + secondPage);
 
+  // the explanation names this page's numbers, and the buttons do the next step
+  await page.selectOption("#discEdMenu", "pages"); await page.waitForTimeout(500);
+  const say2 = await page.textContent("#discEdArrangeText");
+  check("the note gives this page's real numbers (2 across by 1 down, 4 buttons)", /2 across by 1 down \(2 spots\)/.test(say2) && /4 buttons/.test(say2), say2.slice(0, 120));
+  await page.click("#discEdGridSettings"); await page.waitForTimeout(400);
+  check("\"Show this page's grid settings\" opens the grid section with its columns and rows visible", await page.isVisible("#discEdInspector [data-key='menus/pages/layout/flow/columns']") && await page.isVisible("#discEdInspector [data-key='menus/pages/layout/flow/rows']"));
+  await page.click("#discEdFitFree"); await page.waitForTimeout(1500);
+  t = await text();
+  check("\"Make it big enough and place freely\" enlarges the grid, then places every button, in one click", !(t.menus.pages.layout && t.menus.pages.layout.flow) && t.menus.pages.entries.every((e) => e.position && e.position.anchor === "center"), JSON.stringify(t.menus.pages.entries.map((e) => e.position)));
+  check("and the buttons are then draggable", await frame.evaluate(() => document.querySelectorAll('.discMenusScreen:not(.leaving) [data-edit="entry"]').length) === 4);
+
   // the preview does not steal the keyboard from the editor's own fields
   await page.click("#discEdArrange"); await page.waitForTimeout(200);
   await page.selectOption("#discEdMenu", "main"); await page.waitForTimeout(300);

@@ -1725,6 +1725,8 @@
             menu: menuKey,
             positioned: positioned && !layout.Flow, // a grid gives every button a place, but not one the menu file holds
             pages: pageInfo.pages,
+            columns: layout.Flow ? layout.Flow.Columns : 0,
+            rows: layout.Flow ? layout.Flow.Rows : 0,
             virtual: !!virtualMenus[menuKey],
             flow: !!layout.Flow,
             flowFromDocument: !!layout.Flow && !(menu.Layout && menu.Layout.Flow),
