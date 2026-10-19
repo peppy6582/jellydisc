@@ -1,3 +1,10 @@
+> **Disc Menus is now Aster Disc, and has moved to [aster-companion-plugins](https://github.com/peppy6582/aster-companion-plugins/tree/main/AsterDisc).**
+> This repository is archived. To keep getting updates, add the new plugin repository in Jellyfin
+> (Dashboard ▸ Plugins ▸ Repositories):
+> `https://raw.githubusercontent.com/peppy6582/aster-companion-plugins/main/manifest.json`
+> then update the plugin as usual. It keeps its id, so it updates in place and brings its settings and data along.
+> You can then remove this repository from your list. Versions already released here stay downloadable.
+
 # Disc Menus for Jellyfin
 
 A Jellyfin plugin that recreates **DVD and Blu-ray disc menus**: shareable JSON menus with backgrounds,
